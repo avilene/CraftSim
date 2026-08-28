@@ -14,7 +14,118 @@ CraftSim.SALVAGE_STATS.UI = {}
 
 local LIST_HEADER_SCALE = 0.85
 local TAB_CONTENT_SIZE_X = 520
-local TAB_CONTENT_SIZE_Y = 400
+local TAB_CONTENT_SIZE_Y = 420
+local DROP_LIST_OFFSET_Y = -35
+
+---@param itemID number
+---@return string
+local function getFallbackItemLabel(itemID)
+    return C_Item.GetItemNameByID(itemID) or ("Item " .. itemID)
+end
+
+---@param itemIDs number[]
+---@return GGUI.DropdownData[]
+local function buildItemDropdownData(itemIDs)
+    local data = {}
+    for _, itemID in ipairs(itemIDs) do
+        table.insert(data, {
+            label = getFallbackItemLabel(itemID),
+            value = itemID,
+        })
+    end
+    return data
+end
+
+---@param tabContent Frame
+---@param summaryPrefix string
+---@param itemID number
+local function syncInputDropdown(tabContent, summaryPrefix, itemID)
+    local dropdown = tabContent[summaryPrefix .. "InputDropdown"]
+    local dropdownData = tabContent[summaryPrefix .. "InputDropdownData"]
+    if not dropdown or not dropdownData or not itemID then
+        return
+    end
+
+    local label = getFallbackItemLabel(itemID)
+    for _, entry in ipairs(dropdownData) do
+        if entry.value == itemID then
+            label = entry.label
+            break
+        end
+    end
+
+    dropdown:SetData({
+        data = dropdownData,
+        initialValue = itemID,
+        initialLabel = label,
+    })
+end
+
+---@param tabContent Frame
+---@param summaryPrefix string
+---@param itemIDs number[]
+---@param onSelect fun()
+local function createInputDropdown(tabContent, summaryPrefix, itemIDs, onSelect)
+    tabContent[summaryPrefix .. "InputDropdownData"] = buildItemDropdownData(itemIDs)
+    tabContent[summaryPrefix .. "SelectedInputItemID"] = itemIDs[1]
+
+    tabContent[summaryPrefix .. "InputDropdown"] = GGUI.Dropdown({
+        parent = tabContent,
+        anchorParent = tabContent[summaryPrefix .. "InputTitle"].frame,
+        anchorA = "TOPLEFT",
+        anchorB = "BOTTOMLEFT",
+        offsetY = -4,
+        width = 280,
+        clickCallback = function(_, _, value)
+            tabContent[summaryPrefix .. "SelectedInputItemID"] = value
+            onSelect()
+        end,
+    })
+
+    syncInputDropdown(tabContent, summaryPrefix, itemIDs[1])
+
+    tabContent[summaryPrefix .. "BatchInput"].textInput.frame:ClearAllPoints()
+    tabContent[summaryPrefix .. "BatchInput"].textInput.frame:SetPoint(
+        "TOPLEFT", tabContent[summaryPrefix .. "InputDropdown"].frame, "BOTTOMLEFT", 0, -8)
+
+    local items = GUTIL:Map(itemIDs, function(itemID)
+        return Item:CreateFromItemID(itemID)
+    end)
+    GUTIL:ContinueOnAllItemsLoaded(items, function()
+        for index, entry in ipairs(tabContent[summaryPrefix .. "InputDropdownData"]) do
+            entry.label = items[index]:GetItemLink() or entry.label
+        end
+        syncInputDropdown(tabContent, summaryPrefix, tabContent[summaryPrefix .. "SelectedInputItemID"])
+    end)
+end
+
+---@param tabContent Frame
+---@param summaryPrefix string
+---@param recipeData CraftSim.RecipeData?
+---@param getDataByItemID fun(itemID: number): CraftSim.SalvageStatsInputData?
+---@return number? selectedItemID
+---@return CraftSim.SalvageStatsInputData? inputData
+local function resolveSelectedInput(tabContent, summaryPrefix, recipeData, getDataByItemID)
+    local selectedItemID = tabContent[summaryPrefix .. "SelectedInputItemID"]
+
+    if recipeData and recipeData.isSalvageRecipe then
+        local activeItem = recipeData.reagentData.salvageReagentSlot.activeItem
+        if activeItem then
+            local activeItemID = activeItem:GetItemID()
+            if getDataByItemID(activeItemID) then
+                selectedItemID = activeItemID
+                tabContent[summaryPrefix .. "SelectedInputItemID"] = activeItemID
+                syncInputDropdown(tabContent, summaryPrefix, activeItemID)
+            end
+        end
+    end
+
+    if not selectedItemID then
+        return nil, nil
+    end
+
+    return selectedItemID, getDataByItemID(selectedItemID)
+end
 
 ---@param tabContent Frame
 ---@param listName string
@@ -29,7 +140,7 @@ local function createDropList(tabContent, listName, anchorParent, offsetY)
         anchorB = "BOTTOM",
         offsetY = offsetY,
         sizeX = TAB_CONTENT_SIZE_X - 20,
-        sizeY = 200,
+        sizeY = 185,
         showBorder = true,
         savedVariablesTableLayoutConfig = CraftSim.UTIL:GetFrameListLayoutConfig(listName),
         columnOptions = {
@@ -193,9 +304,11 @@ local function initSummarySection(tabContent, summaryPrefix)
         anchorParent = tabContent[summaryPrefix .. "ProfitTitle"].frame,
         anchorA = "TOPLEFT",
         anchorB = "BOTTOMLEFT",
-        offsetY = -10,
+        offsetY = -12,
         text = "",
-        scale = 0.9,
+        scale = 0.85,
+        wrap = true,
+        fixedWidth = TAB_CONTENT_SIZE_X - 30,
     })
 end
 
@@ -208,25 +321,30 @@ local function updateDropList(dropList, result)
         return
     end
 
-    for _, drop in ipairs(result.drops) do
-        local item = Item:CreateFromItemID(drop.itemID)
-        local itemLink = item:GetItemLink()
-        local itemText = itemLink or ("item:" .. drop.itemID)
-        local rateText = GUTIL:Round(drop.dropRate * 100, 2) .. "%"
-        local qtyText = tostring(drop.expectedQty)
-        local priceText = CraftSim.UTIL:FormatMoney(drop.price, true)
-        local valueText = CraftSim.UTIL:FormatMoney(drop.expectedValue, true)
+    local items = GUTIL:Map(result.drops, function(drop)
+        return Item:CreateFromItemID(drop.itemID)
+    end)
 
-        dropList:Add(function(_, columns)
-            columns[1].text:SetText(itemText)
-            columns[2].text:SetText(rateText)
-            columns[3].text:SetText(qtyText)
-            columns[4].text:SetText(priceText)
-            columns[5].text:SetText(valueText)
-        end)
-    end
+    GUTIL:ContinueOnAllItemsLoaded(items, function()
+        for index, drop in ipairs(result.drops) do
+            local item = items[index]
+            local itemText = item:GetItemLink() or getFallbackItemLabel(drop.itemID)
+            local rateText = GUTIL:Round(drop.dropRate * 100, 2) .. "%"
+            local qtyText = tostring(drop.expectedQty)
+            local priceText = CraftSim.UTIL:FormatMoney(drop.price, true)
+            local valueText = CraftSim.UTIL:FormatMoney(drop.expectedValue, true)
 
-    dropList:UpdateDisplay()
+            dropList:Add(function(_, columns)
+                columns[1].text:SetText(itemText)
+                columns[2].text:SetText(rateText)
+                columns[3].text:SetText(qtyText)
+                columns[4].text:SetText(priceText)
+                columns[5].text:SetText(valueText)
+            end)
+        end
+
+        dropList:UpdateDisplay()
+    end)
 end
 
 ---@param tabContent Frame
@@ -334,8 +452,15 @@ function CraftSim.SALVAGE_STATS.UI:Init()
 
         local prospectingContent = parentFrame.content.prospectingTab.content
         initSummarySection(prospectingContent, "prospecting")
+        prospectingContent.prospectingInputValue:Hide()
+        createInputDropdown(prospectingContent, "prospecting",
+            CraftSim.SALVAGE_STATS:GetAllInputItemIDs(CraftSim.SALVAGE_STATS_DATA.PROSPECTING),
+            function()
+                CraftSim.SALVAGE_STATS.UI:Update(CraftSim.MODULES.recipeData)
+            end)
         prospectingContent.prospectingDropList = createDropList(
-            prospectingContent, "SALVAGE_STATS_PROSPECTING_LIST", prospectingContent.prospectingNote.frame, -10)
+            prospectingContent, "SALVAGE_STATS_PROSPECTING_LIST", prospectingContent.prospectingNote.frame,
+            DROP_LIST_OFFSET_Y)
 
         local disenchantContent = parentFrame.content.disenchantTab.content
         initSummarySection(disenchantContent, "disenchant")
@@ -373,14 +498,20 @@ function CraftSim.SALVAGE_STATS.UI:Init()
 
         local variantButton = disenchantContent.disenchantVariantButtons[1]
         disenchantContent.disenchantDropList = createDropList(
-            disenchantContent, "SALVAGE_STATS_DISENCHANT_LIST", variantButton.frame, -10)
+            disenchantContent, "SALVAGE_STATS_DISENCHANT_LIST", variantButton.frame, DROP_LIST_OFFSET_Y)
 
         local millingContent = parentFrame.content.millingTab.content
         initSummarySection(millingContent, "milling")
+        millingContent.millingInputValue:Hide()
         millingContent.millingBatchInput:SetValue(CraftSim.SALVAGE_STATS_DATA.MILLING_DEFAULT_BATCH_SIZE)
         millingContent.millingBatchLabel:SetText(L("SALVAGE_STATS_MILLING_BATCH_LABEL"))
+        createInputDropdown(millingContent, "milling",
+            CraftSim.SALVAGE_STATS:GetAllInputItemIDs(CraftSim.SALVAGE_STATS_DATA.MILLING),
+            function()
+                CraftSim.SALVAGE_STATS.UI:Update(CraftSim.MODULES.recipeData)
+            end)
         millingContent.millingDropList = createDropList(
-            millingContent, "SALVAGE_STATS_MILLING_LIST", millingContent.millingNote.frame, -10)
+            millingContent, "SALVAGE_STATS_MILLING_LIST", millingContent.millingNote.frame, DROP_LIST_OFFSET_Y)
 
         GGUI.BlizzardTabSystem {
             parentFrame.content.prospectingTab,
@@ -404,24 +535,24 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
     local disenchantContent = frame.content.disenchantTab.content
     local millingContent = frame.content.millingTab.content
 
-    local prospectingData = CraftSim.SALVAGE_STATS:GetProspectingDataForRecipe(recipeData)
     local prospectingBatchSize = prospectingContent.prospectingBatchInput.currentValue
         or CraftSim.SALVAGE_STATS_DATA.PROSPECTING_DEFAULT_BATCH_SIZE
 
-    if prospectingData and recipeData then
-        local activeItem = recipeData.reagentData.salvageReagentSlot.activeItem
-        local activeItemID = activeItem:GetItemID()
-        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(activeItemID, true) or 0
-        local prospectingResult = CraftSim.SALVAGE_STATS:CalculateStats(
-            prospectingData, prospectingBatchSize, inputUnitPrice, true, activeItemID)
-        local inputLabel = (activeItem:GetItemLink() or prospectingData.label) ..
-            " x" .. tostring(prospectingBatchSize)
+    local selectedProspectingItemID, resolvedProspectingData = resolveSelectedInput(
+        prospectingContent, "prospecting", recipeData, function(itemID)
+            return CraftSim.SALVAGE_STATS:GetProspectingDataByItemID(itemID)
+        end)
 
-        updateSummary(prospectingContent, "prospecting", prospectingResult, inputLabel,
+    if resolvedProspectingData and selectedProspectingItemID then
+        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(selectedProspectingItemID, true) or 0
+        local prospectingResult = CraftSim.SALVAGE_STATS:CalculateStats(
+            resolvedProspectingData, prospectingBatchSize, inputUnitPrice, true, selectedProspectingItemID)
+
+        updateSummary(prospectingContent, "prospecting", prospectingResult, nil,
             L("SALVAGE_STATS_PROSPECTING_NOTE"))
         updateDropList(prospectingContent.prospectingDropList, prospectingResult)
     else
-        updateSummary(prospectingContent, "prospecting", nil, L("SALVAGE_STATS_NO_PROSPECTING_DATA"),
+        updateSummary(prospectingContent, "prospecting", nil, nil,
             L("SALVAGE_STATS_PROSPECTING_NOTE"))
         updateDropList(prospectingContent.prospectingDropList, nil)
     end
@@ -449,24 +580,22 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
         updateDropList(disenchantContent.disenchantDropList, disenchantResult)
     end
 
-    local millingData = CraftSim.SALVAGE_STATS:GetMillingDataForRecipe(recipeData)
+    local selectedMillingItemID, resolvedMillingData = resolveSelectedInput(
+        millingContent, "milling", recipeData, function(itemID)
+            return CraftSim.SALVAGE_STATS:GetMillingDataByItemID(itemID)
+        end)
     local millingBatchSize = millingContent.millingBatchInput.currentValue
         or CraftSim.SALVAGE_STATS_DATA.MILLING_DEFAULT_BATCH_SIZE
 
-    if millingData and recipeData then
-        local activeItem = recipeData.reagentData.salvageReagentSlot.activeItem
-        local activeItemID = activeItem:GetItemID()
-        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(activeItemID, true) or 0
+    if resolvedMillingData and selectedMillingItemID then
+        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(selectedMillingItemID, true) or 0
         local millingResult = CraftSim.SALVAGE_STATS:CalculateStats(
-            millingData, millingBatchSize, inputUnitPrice, true, activeItemID)
-        local inputLabel = (activeItem:GetItemLink() or millingData.label) ..
-            " x" .. tostring(millingBatchSize)
+            resolvedMillingData, millingBatchSize, inputUnitPrice, true, selectedMillingItemID)
 
-        updateSummary(millingContent, "milling", millingResult, inputLabel, L("SALVAGE_STATS_MILLING_NOTE"))
+        updateSummary(millingContent, "milling", millingResult, nil, L("SALVAGE_STATS_MILLING_NOTE"))
         updateDropList(millingContent.millingDropList, millingResult)
     else
-        updateSummary(millingContent, "milling", nil, L("SALVAGE_STATS_NO_MILLING_DATA"),
-            L("SALVAGE_STATS_MILLING_NOTE"))
+        updateSummary(millingContent, "milling", nil, nil, L("SALVAGE_STATS_MILLING_NOTE"))
         updateDropList(millingContent.millingDropList, nil)
     end
 end
@@ -486,10 +615,5 @@ function CraftSim.SALVAGE_STATS.UI:VisibleByContext()
 
     local selectedTab = CraftSim.UTIL:GetSelectedProfessionTab()
     local isRecipeTab = selectedTab == CraftSim.CONST.PROFESSIONS_TAB.RECIPE
-    if not isRecipeTab then
-        return false
-    end
-
-    local recipeData = CraftSim.MODULES.recipeData
-    return recipeData ~= nil and recipeData.isSalvageRecipe
+    return isRecipeTab
 end

@@ -669,6 +669,7 @@ function CraftSim.LOCAL_EN:GetData()
         SALVAGE_STATS_DISENCHANT_NOTE =
         "Resourcefulness is not included. Profit uses AH prices and a 5% cut.",
         SALVAGE_STATS_NO_MILLING_DATA = "Select a supported Midnight milling herb",
+        SALVAGE_STATS_INPUT_SELECT_LABEL = "Select input",
         SALVAGE_STATS_MILLING_NOTE =
         "Assumes ~15 pigments per 10 herbs. Input cost uses the selected herb's AH price. Profit uses a 5% AH cut.",
         CONTROL_PANEL_MODULES_RECIPE_SCAN_LABEL = "Recipe Scan",

@@ -107,6 +107,18 @@ function CraftSim.SALVAGE_STATS:GetMillingDataForRecipe(recipeData)
     return self:GetMillingDataByItemID(activeItem:GetItemID())
 end
 
+---@param entries CraftSim.SalvageStatsInputData[]
+---@return number[]
+function CraftSim.SALVAGE_STATS:GetAllInputItemIDs(entries)
+    local itemIDs = {}
+    for _, data in ipairs(entries) do
+        for _, itemID in ipairs(data.itemIDs) do
+            table.insert(itemIDs, itemID)
+        end
+    end
+    return itemIDs
+end
+
 ---@param recipeData CraftSim.RecipeData?
 ---@return CraftSim.SalvageStatsInputData?
 function CraftSim.SALVAGE_STATS:GetProspectingDataForRecipe(recipeData)
