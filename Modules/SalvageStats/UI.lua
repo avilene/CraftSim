@@ -14,8 +14,14 @@ CraftSim.SALVAGE_STATS.UI = {}
 
 local LIST_HEADER_SCALE = 0.85
 local TAB_CONTENT_SIZE_X = 520
-local TAB_CONTENT_SIZE_Y = 420
-local DROP_LIST_OFFSET_Y = -35
+local TAB_CONTENT_SIZE_Y = 460
+local LIST_PAD_X = 10
+local LIST_PAD_Y = 8
+local LIST_SIZE_X = TAB_CONTENT_SIZE_X - (LIST_PAD_X * 2) - 26
+local LIST_SIZE_Y = 175
+local LIST_ROW_HEIGHT = 20
+local ITEM_COLUMN_WIDTH = 200
+local ITEM_NAME_WIDTH = 165
 
 ---@param itemID number
 ---@return string
@@ -129,66 +135,95 @@ end
 
 ---@param tabContent Frame
 ---@param listName string
----@param anchorParent Region
----@param offsetY number
 ---@return GGUI.FrameList
-local function createDropList(tabContent, listName, anchorParent, offsetY)
+local function createDropList(tabContent, listName)
     return GGUI.FrameList({
         parent = tabContent,
-        anchorParent = anchorParent,
-        anchorA = "TOP",
-        anchorB = "BOTTOM",
-        offsetY = offsetY,
-        sizeX = TAB_CONTENT_SIZE_X - 20,
-        sizeY = 185,
+        anchorParent = tabContent,
+        anchorA = "BOTTOMLEFT",
+        anchorB = "BOTTOMLEFT",
+        offsetX = LIST_PAD_X,
+        offsetY = LIST_PAD_Y,
+        sizeX = LIST_SIZE_X,
+        sizeY = LIST_SIZE_Y,
+        rowHeight = LIST_ROW_HEIGHT,
         showBorder = true,
         savedVariablesTableLayoutConfig = CraftSim.UTIL:GetFrameListLayoutConfig(listName),
         columnOptions = {
             {
                 label = L("SALVAGE_STATS_ITEM_HEADER"),
-                width = 180,
+                width = ITEM_COLUMN_WIDTH,
                 justifyOptions = { type = "H", align = "LEFT" },
                 resizable = true,
                 headerScale = LIST_HEADER_SCALE,
+                resizeCallback = function(itemColumn, newWidth)
+                    if itemColumn.text then
+                        itemColumn.text:SetWidth(math.max(60, newWidth - 28))
+                    end
+                end,
             },
             {
                 label = L("SALVAGE_STATS_RATE_HEADER"),
-                width = 70,
+                width = 52,
                 justifyOptions = { type = "H", align = "RIGHT" },
                 resizable = true,
                 headerScale = LIST_HEADER_SCALE,
             },
             {
                 label = L("SALVAGE_STATS_EXPECTED_QTY_HEADER"),
-                width = 70,
+                width = 52,
                 justifyOptions = { type = "H", align = "RIGHT" },
                 resizable = true,
                 headerScale = LIST_HEADER_SCALE,
             },
             {
                 label = L("SALVAGE_STATS_PRICE_HEADER"),
-                width = 80,
+                width = 72,
                 justifyOptions = { type = "H", align = "RIGHT" },
                 resizable = true,
                 headerScale = LIST_HEADER_SCALE,
             },
             {
                 label = L("SALVAGE_STATS_VALUE_HEADER"),
-                width = 90,
+                width = 80,
                 justifyOptions = { type = "H", align = "RIGHT" },
                 resizable = true,
                 headerScale = LIST_HEADER_SCALE,
             },
         },
         rowConstructor = function(columns)
-            for _, column in ipairs(columns) do
+            local itemColumn = columns[1]
+            itemColumn.icon = GGUI.Icon({
+                parent = itemColumn,
+                anchorParent = itemColumn,
+                anchorA = "LEFT",
+                anchorB = "LEFT",
+                offsetX = 2,
+                sizeX = 16,
+                sizeY = 16,
+                qualityIconScale = 1,
+            })
+            itemColumn.text = GGUI.Text({
+                parent = itemColumn,
+                anchorParent = itemColumn,
+                anchorA = "LEFT",
+                anchorB = "LEFT",
+                offsetX = 22,
+                scale = 0.85,
+                fixedWidth = ITEM_NAME_WIDTH,
+                justifyOptions = { type = "H", align = "LEFT" },
+            })
+
+            for index = 2, #columns do
+                local column = columns[index]
                 column.text = GGUI.Text({
                     parent = column,
                     anchorParent = column,
                     justifyOptions = column.justifyOptions,
-                    anchorA = "LEFT",
-                    anchorB = "LEFT",
-                    offsetX = 5,
+                    anchorA = "RIGHT",
+                    anchorB = "RIGHT",
+                    offsetX = -4,
+                    scale = 0.9,
                 })
             end
         end,
@@ -304,11 +339,11 @@ local function initSummarySection(tabContent, summaryPrefix)
         anchorParent = tabContent[summaryPrefix .. "ProfitTitle"].frame,
         anchorA = "TOPLEFT",
         anchorB = "BOTTOMLEFT",
-        offsetY = -12,
+        offsetY = -10,
         text = "",
-        scale = 0.85,
+        scale = 0.8,
         wrap = true,
-        fixedWidth = TAB_CONTENT_SIZE_X - 30,
+        fixedWidth = TAB_CONTENT_SIZE_X - 40,
     })
 end
 
@@ -328,18 +363,28 @@ local function updateDropList(dropList, result)
     GUTIL:ContinueOnAllItemsLoaded(items, function()
         for index, drop in ipairs(result.drops) do
             local item = items[index]
-            local itemText = item:GetItemLink() or getFallbackItemLabel(drop.itemID)
+            local itemName = item:GetItemName() or getFallbackItemLabel(drop.itemID)
+            local itemLink = item:GetItemLink()
             local rateText = GUTIL:Round(drop.dropRate * 100, 2) .. "%"
             local qtyText = tostring(drop.expectedQty)
             local priceText = CraftSim.UTIL:FormatMoney(drop.price, true)
             local valueText = CraftSim.UTIL:FormatMoney(drop.expectedValue, true)
 
-            dropList:Add(function(_, columns)
-                columns[1].text:SetText(itemText)
+            dropList:Add(function(row, columns)
+                columns[1].icon:SetItem(item)
+                columns[1].text:SetText(itemName)
                 columns[2].text:SetText(rateText)
                 columns[3].text:SetText(qtyText)
                 columns[4].text:SetText(priceText)
                 columns[5].text:SetText(valueText)
+
+                if itemLink then
+                    row.tooltipOptions = {
+                        anchor = "ANCHOR_RIGHT",
+                        owner = row.frame,
+                        itemLink = itemLink,
+                    }
+                end
             end)
         end
 
@@ -452,6 +497,7 @@ function CraftSim.SALVAGE_STATS.UI:Init()
 
         local prospectingContent = parentFrame.content.prospectingTab.content
         initSummarySection(prospectingContent, "prospecting")
+        prospectingContent.prospectingInputTitle:SetText(L("SALVAGE_STATS_INPUT_SELECT_LABEL"))
         prospectingContent.prospectingInputValue:Hide()
         createInputDropdown(prospectingContent, "prospecting",
             CraftSim.SALVAGE_STATS:GetAllInputItemIDs(CraftSim.SALVAGE_STATS_DATA.PROSPECTING),
@@ -459,8 +505,7 @@ function CraftSim.SALVAGE_STATS.UI:Init()
                 CraftSim.SALVAGE_STATS.UI:Update(CraftSim.MODULES.recipeData)
             end)
         prospectingContent.prospectingDropList = createDropList(
-            prospectingContent, "SALVAGE_STATS_PROSPECTING_LIST", prospectingContent.prospectingNote.frame,
-            DROP_LIST_OFFSET_Y)
+            prospectingContent, "SALVAGE_STATS_PROSPECTING_LIST")
 
         local disenchantContent = parentFrame.content.disenchantTab.content
         initSummarySection(disenchantContent, "disenchant")
@@ -482,7 +527,7 @@ function CraftSim.SALVAGE_STATS.UI:Init()
                     or disenchantContent.disenchantVariantButtons[index - 1].frame,
                 anchorA = index == 1 and "TOPLEFT" or "LEFT",
                 anchorB = index == 1 and "BOTTOMLEFT" or "RIGHT",
-                offsetY = index == 1 and -8 or 0,
+                offsetY = index == 1 and -6 or 0,
                 offsetX = index == 1 and 0 or 5,
                 label = shuffleData.label,
                 sizeX = 120,
@@ -496,12 +541,12 @@ function CraftSim.SALVAGE_STATS.UI:Init()
         end
         disenchantContent.selectedDisenchantIndex = 1
 
-        local variantButton = disenchantContent.disenchantVariantButtons[1]
         disenchantContent.disenchantDropList = createDropList(
-            disenchantContent, "SALVAGE_STATS_DISENCHANT_LIST", variantButton.frame, DROP_LIST_OFFSET_Y)
+            disenchantContent, "SALVAGE_STATS_DISENCHANT_LIST")
 
         local millingContent = parentFrame.content.millingTab.content
         initSummarySection(millingContent, "milling")
+        millingContent.millingInputTitle:SetText(L("SALVAGE_STATS_INPUT_SELECT_LABEL"))
         millingContent.millingInputValue:Hide()
         millingContent.millingBatchInput:SetValue(CraftSim.SALVAGE_STATS_DATA.MILLING_DEFAULT_BATCH_SIZE)
         millingContent.millingBatchLabel:SetText(L("SALVAGE_STATS_MILLING_BATCH_LABEL"))
@@ -511,7 +556,7 @@ function CraftSim.SALVAGE_STATS.UI:Init()
                 CraftSim.SALVAGE_STATS.UI:Update(CraftSim.MODULES.recipeData)
             end)
         millingContent.millingDropList = createDropList(
-            millingContent, "SALVAGE_STATS_MILLING_LIST", millingContent.millingNote.frame, DROP_LIST_OFFSET_Y)
+            millingContent, "SALVAGE_STATS_MILLING_LIST")
 
         GGUI.BlizzardTabSystem {
             parentFrame.content.prospectingTab,
