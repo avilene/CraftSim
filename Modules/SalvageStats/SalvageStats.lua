@@ -60,6 +60,53 @@ function CraftSim.SALVAGE_STATS:GetDisenchantDataByItemID(itemID)
     end
 end
 
+---@param itemID number
+---@return CraftSim.SalvageStatsInputData?
+function CraftSim.SALVAGE_STATS:GetMillingDataByItemID(itemID)
+    for _, data in ipairs(CraftSim.SALVAGE_STATS_DATA.MILLING) do
+        for _, id in ipairs(data.itemIDs) do
+            if id == itemID then
+                return data
+            end
+        end
+    end
+end
+
+---@param inputData CraftSim.SalvageStatsInputData
+---@param activeInputItemID number?
+---@return CraftSim.SalvageStatsDrop[]
+function CraftSim.SALVAGE_STATS:ResolveDrops(inputData, activeInputItemID)
+    if inputData.pigmentItemIDs and activeInputItemID then
+        for index, itemID in ipairs(inputData.itemIDs) do
+            if itemID == activeInputItemID then
+                return {
+                    {
+                        itemID = inputData.pigmentItemIDs[index],
+                        dropRate = inputData.pigmentsPerHerb or CraftSim.SALVAGE_STATS_DATA.MILLING_PIGMENTS_PER_HERB,
+                    },
+                }
+            end
+        end
+    end
+
+    return inputData.drops
+end
+
+---@param recipeData CraftSim.RecipeData?
+---@return CraftSim.SalvageStatsInputData?
+function CraftSim.SALVAGE_STATS:GetMillingDataForRecipe(recipeData)
+    if not recipeData or not recipeData.isSalvageRecipe then
+        return nil
+    end
+
+    local activeItem = recipeData.reagentData.salvageReagentSlot.activeItem
+    if not activeItem then
+        return nil
+    end
+
+    return self:GetMillingDataByItemID(activeItem:GetItemID())
+end
+
 ---@param recipeData CraftSim.RecipeData?
 ---@return CraftSim.SalvageStatsInputData?
 function CraftSim.SALVAGE_STATS:GetProspectingDataForRecipe(recipeData)
@@ -79,20 +126,23 @@ end
 ---@param inputCount number
 ---@param inputUnitPrice number?
 ---@param applyAHCut boolean?
+---@param activeInputItemID number?
 ---@return CraftSim.SalvageStatsCalculationResult
-function CraftSim.SALVAGE_STATS:CalculateStats(inputData, inputCount, inputUnitPrice, applyAHCut)
+function CraftSim.SALVAGE_STATS:CalculateStats(inputData, inputCount, inputUnitPrice, applyAHCut, activeInputItemID)
     inputCount = math.max(0, math.floor(inputCount or 0))
     applyAHCut = applyAHCut ~= false
 
     local resolvedInputPrice = inputUnitPrice
     if resolvedInputPrice == nil then
-        resolvedInputPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(inputData.itemIDs[1], true) or 0
+        local priceItemID = activeInputItemID or inputData.itemIDs[1]
+        resolvedInputPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(priceItemID, true) or 0
     end
 
     local totalValue = 0
     local dropResults = {}
+    local drops = self:ResolveDrops(inputData, activeInputItemID)
 
-    for _, drop in ipairs(inputData.drops) do
+    for _, drop in ipairs(drops) do
         local expectedQty = math.floor(inputCount * drop.dropRate)
         local price = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(drop.itemID, true) or 0
         local expectedValue = expectedQty * price

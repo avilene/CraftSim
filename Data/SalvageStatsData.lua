@@ -4,6 +4,7 @@ local CraftSim = select(2, ...)
 --- Drop rates sourced from Penguinr2gt's Midnight Profession Spreadsheet.
 --- Prospecting rates assume ~25% resourcefulness and are per ore unit.
 --- Disenchant shuffle rates do not include resourcefulness.
+--- Milling yields assume ~15 pigments per 10 herbs (yellow skill tier).
 
 ---@class CraftSim.SalvageStatsDrop
 ---@field itemID number
@@ -16,10 +17,14 @@ local CraftSim = select(2, ...)
 ---@field drops CraftSim.SalvageStatsDrop[]
 ---@field ratesIncludeResourcefulness boolean?
 ---@field resourcefulnessNotIncluded boolean?
+---@field pigmentItemIDs number[]?
+---@field pigmentsPerHerb number?
 
 CraftSim.SALVAGE_STATS_DATA = {
     PROSPECTING_DEFAULT_BATCH_SIZE = 2000,
     DISENCHANT_DEFAULT_BATCH_SIZE = 1000,
+    MILLING_DEFAULT_BATCH_SIZE = 2000,
+    MILLING_PIGMENTS_PER_HERB = 1.5,
 
     ---@type CraftSim.SalvageStatsInputData[]
     PROSPECTING = {
@@ -86,6 +91,42 @@ CraftSim.SALVAGE_STATS_DATA = {
                 { itemID = 236963, dropRate = 0.0589 }, -- Bright Linen R1
                 { itemID = 237359, dropRate = 0.0574 }, -- Refulgent Copper Ore R1
             },
+        },
+    },
+
+    ---@type CraftSim.SalvageStatsInputData[]
+    MILLING = {
+        {
+            label = "Tranquility Bloom",
+            itemIDs = { 236761, 236767 },
+            pigmentItemIDs = { 245807, 245808 },
+            defaultBatchSize = 2000,
+            pigmentsPerHerb = 1.5,
+            drops = {},
+        },
+        {
+            label = "Argentleaf",
+            itemIDs = { 236776, 236777 },
+            pigmentItemIDs = { 245803, 245804 },
+            defaultBatchSize = 2000,
+            pigmentsPerHerb = 1.5,
+            drops = {},
+        },
+        {
+            label = "Mana Lily",
+            itemIDs = { 236778, 236779 },
+            pigmentItemIDs = { 245866, 245867 },
+            defaultBatchSize = 2000,
+            pigmentsPerHerb = 1.5,
+            drops = {},
+        },
+        {
+            label = "Sanguithorn",
+            itemIDs = { 236770, 236771 },
+            pigmentItemIDs = { 245864, 245865 },
+            defaultBatchSize = 2000,
+            pigmentsPerHerb = 1.5,
+            drops = {},
         },
     },
 }

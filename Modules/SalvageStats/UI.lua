@@ -315,6 +315,23 @@ function CraftSim.SALVAGE_STATS.UI:Init()
             top = true,
         })
 
+        parentFrame.content.millingTab = GGUI.BlizzardTab({
+            buttonOptions = {
+                parent = parentFrame.content,
+                anchorParent = parentFrame.content.disenchantTab.button,
+                anchorA = "LEFT",
+                anchorB = "RIGHT",
+                label = L("SALVAGE_STATS_MILLING_TAB"),
+            },
+            parent = parentFrame.content,
+            anchorParent = parentFrame.content,
+            sizeX = TAB_CONTENT_SIZE_X,
+            sizeY = TAB_CONTENT_SIZE_Y,
+            canBeEnabled = true,
+            offsetY = -30,
+            top = true,
+        })
+
         local prospectingContent = parentFrame.content.prospectingTab.content
         initSummarySection(prospectingContent, "prospecting")
         prospectingContent.prospectingDropList = createDropList(
@@ -358,7 +375,18 @@ function CraftSim.SALVAGE_STATS.UI:Init()
         disenchantContent.disenchantDropList = createDropList(
             disenchantContent, "SALVAGE_STATS_DISENCHANT_LIST", variantButton.frame, -10)
 
-        GGUI.BlizzardTabSystem { parentFrame.content.prospectingTab, parentFrame.content.disenchantTab }
+        local millingContent = parentFrame.content.millingTab.content
+        initSummarySection(millingContent, "milling")
+        millingContent.millingBatchInput:SetValue(CraftSim.SALVAGE_STATS_DATA.MILLING_DEFAULT_BATCH_SIZE)
+        millingContent.millingBatchLabel:SetText(L("SALVAGE_STATS_MILLING_BATCH_LABEL"))
+        millingContent.millingDropList = createDropList(
+            millingContent, "SALVAGE_STATS_MILLING_LIST", millingContent.millingNote.frame, -10)
+
+        GGUI.BlizzardTabSystem {
+            parentFrame.content.prospectingTab,
+            parentFrame.content.disenchantTab,
+            parentFrame.content.millingTab,
+        }
     end
 
     createContent(frame)
@@ -374,6 +402,7 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
 
     local prospectingContent = frame.content.prospectingTab.content
     local disenchantContent = frame.content.disenchantTab.content
+    local millingContent = frame.content.millingTab.content
 
     local prospectingData = CraftSim.SALVAGE_STATS:GetProspectingDataForRecipe(recipeData)
     local prospectingBatchSize = prospectingContent.prospectingBatchInput.currentValue
@@ -381,8 +410,10 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
 
     if prospectingData and recipeData then
         local activeItem = recipeData.reagentData.salvageReagentSlot.activeItem
-        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(activeItem:GetItemID(), true) or 0
-        local prospectingResult = CraftSim.SALVAGE_STATS:CalculateStats(prospectingData, prospectingBatchSize, inputUnitPrice)
+        local activeItemID = activeItem:GetItemID()
+        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(activeItemID, true) or 0
+        local prospectingResult = CraftSim.SALVAGE_STATS:CalculateStats(
+            prospectingData, prospectingBatchSize, inputUnitPrice, true, activeItemID)
         local inputLabel = (activeItem:GetItemLink() or prospectingData.label) ..
             " x" .. tostring(prospectingBatchSize)
 
@@ -405,15 +436,38 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
     end
 
     if disenchantData then
-        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(disenchantData.itemIDs[1], true) or 0
-        local disenchantResult = CraftSim.SALVAGE_STATS:CalculateStats(disenchantData, disenchantBatchSize, inputUnitPrice)
-        local inputItem = Item:CreateFromItemID(disenchantData.itemIDs[1])
+        local inputItemID = disenchantData.itemIDs[1]
+        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(inputItemID, true) or 0
+        local disenchantResult = CraftSim.SALVAGE_STATS:CalculateStats(
+            disenchantData, disenchantBatchSize, inputUnitPrice, true, inputItemID)
+        local inputItem = Item:CreateFromItemID(inputItemID)
         local inputLabel = (inputItem:GetItemLink() or disenchantData.label) ..
             " x" .. tostring(disenchantBatchSize)
 
         updateSummary(disenchantContent, "disenchant", disenchantResult, inputLabel,
             L("SALVAGE_STATS_DISENCHANT_NOTE"))
         updateDropList(disenchantContent.disenchantDropList, disenchantResult)
+    end
+
+    local millingData = CraftSim.SALVAGE_STATS:GetMillingDataForRecipe(recipeData)
+    local millingBatchSize = millingContent.millingBatchInput.currentValue
+        or CraftSim.SALVAGE_STATS_DATA.MILLING_DEFAULT_BATCH_SIZE
+
+    if millingData and recipeData then
+        local activeItem = recipeData.reagentData.salvageReagentSlot.activeItem
+        local activeItemID = activeItem:GetItemID()
+        local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(activeItemID, true) or 0
+        local millingResult = CraftSim.SALVAGE_STATS:CalculateStats(
+            millingData, millingBatchSize, inputUnitPrice, true, activeItemID)
+        local inputLabel = (activeItem:GetItemLink() or millingData.label) ..
+            " x" .. tostring(millingBatchSize)
+
+        updateSummary(millingContent, "milling", millingResult, inputLabel, L("SALVAGE_STATS_MILLING_NOTE"))
+        updateDropList(millingContent.millingDropList, millingResult)
+    else
+        updateSummary(millingContent, "milling", nil, L("SALVAGE_STATS_NO_MILLING_DATA"),
+            L("SALVAGE_STATS_MILLING_NOTE"))
+        updateDropList(millingContent.millingDropList, nil)
     end
 end
 
