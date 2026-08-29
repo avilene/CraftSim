@@ -98,15 +98,13 @@ local function createInputDropdown(tabContent, summaryPrefix, itemIDs, onSelect)
 
     syncInputDropdown(tabContent, summaryPrefix, itemIDs[1])
 
-    tabContent[summaryPrefix .. "BatchInput"].textInput.frame:ClearAllPoints()
-    tabContent[summaryPrefix .. "BatchInput"].textInput.frame:SetPoint(
-        "TOPLEFT", tabContent[summaryPrefix .. "InputDropdown"].frame, "BOTTOMLEFT", 0, -8)
-    tabContent[summaryPrefix .. "BatchInput"].frame:ClearAllPoints()
-    tabContent[summaryPrefix .. "BatchInput"].frame:SetPoint(
+    local batchInputFrame = tabContent[summaryPrefix .. "BatchInput"].textInput.frame
+    batchInputFrame:ClearAllPoints()
+    batchInputFrame:SetPoint(
         "TOPLEFT", tabContent[summaryPrefix .. "InputDropdown"].frame, "BOTTOMLEFT", 0, -8)
     tabContent[summaryPrefix .. "BatchLabel"].frame:ClearAllPoints()
     tabContent[summaryPrefix .. "BatchLabel"].frame:SetPoint(
-        "LEFT", tabContent[summaryPrefix .. "BatchInput"].frame, "RIGHT", 10, 0)
+        "LEFT", batchInputFrame, "RIGHT", 25, 0)
 
     local items = GUTIL:Map(itemIDs, function(itemID)
         return Item:CreateFromItemID(itemID)
@@ -268,16 +266,16 @@ local function initSummarySection(tabContent, summaryPrefix)
 
     tabContent[summaryPrefix .. "BatchLabel"] = GGUI.Text({
         parent = tabContent,
-        anchorParent = tabContent[summaryPrefix .. "BatchInput"].frame,
+        anchorParent = tabContent[summaryPrefix .. "BatchInput"].textInput.frame,
         anchorA = "LEFT",
         anchorB = "RIGHT",
-        offsetX = 10,
+        offsetX = 25,
         text = L("SALVAGE_STATS_BATCH_LABEL"),
     })
 
     tabContent[summaryPrefix .. "CostTitle"] = GGUI.Text({
         parent = tabContent,
-        anchorParent = tabContent[summaryPrefix .. "BatchInput"].frame,
+        anchorParent = tabContent[summaryPrefix .. "BatchInput"].textInput.frame,
         anchorA = "TOPLEFT",
         anchorB = "BOTTOMLEFT",
         offsetY = -12,
@@ -640,11 +638,14 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
 end
 
 function CraftSim.SALVAGE_STATS.UI:RestoreFrameConfig()
+    if not CraftSim.SALVAGE_STATS.frame then
+        return
+    end
     CraftSim.SALVAGE_STATS.frame:RestoreSavedConfig(ProfessionsFrame)
 end
 
 function CraftSim.SALVAGE_STATS.UI:VisibleByContext()
-    if not CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID) then
+    if not self.module or not CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID) then
         return false
     end
 

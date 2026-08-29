@@ -90,34 +90,34 @@ end
 
 function CraftSim.MODULES:Init()
 	for moduleID, module in pairs(CraftSim.MODULES.modules) do
-		Logger:LogDebug("Initializing Module UI: {module}", moduleID)
-		-- Inject module reference into UI if there is one
-		if module.Init then
-			module:Init()
-		end
-		if module.UI then
-			module.UI.module = module
-			module.UI:Init()
-
-			-- restore ggui frame config
-			if module.UI.RestoreFrameConfig then
-				module.UI:RestoreFrameConfig()
+		local success, err = pcall(function()
+			Logger:LogDebug("Initializing Module UI: {module}", moduleID)
+			-- Inject module reference into UI if there is one
+			if module.Init then
+				module:Init()
 			end
-		end
+			if module.UI then
+				module.UI.module = module
+				module.UI:Init()
 
-		if module.DEBUG then
-			module.DEBUG.module = module
-		end
+				-- restore ggui frame config
+				if module.UI.RestoreFrameConfig then
+					module.UI:RestoreFrameConfig()
+				end
+			end
 
-		-- TODO: create globally named ggui native anchor frames to be saved and restored to
-		if module.frame and module.frame.RestoreSavedConfig then
-			--module.frame:RestoreSavedConfig()
+			if module.DEBUG then
+				module.DEBUG.module = module
+			end
+		end)
+		if not success then
+			Logger:LogError("Failed to initialize module {module}: {error}", moduleID, err)
 		end
 	end
 end
 
 function CraftSim.MODULES:UpdateModuleVisibility(module)
-	if module.UI and module.UI.VisibleByContext then
+	if module.UI and module.UI.VisibleByContext and module.UI.module then
 		local visible = module.UI:VisibleByContext()
 		if module.frame then
 			module.frame:SetVisible(visible)

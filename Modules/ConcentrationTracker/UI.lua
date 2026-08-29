@@ -891,7 +891,7 @@ function CraftSim.CONCENTRATION_TRACKER.UI:UpdateMinimizedDisplay()
 end
 
 function CraftSim.CONCENTRATION_TRACKER.UI:VisibleByContext()
-    if not CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID) then
+    if not self.module or not CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID) then
         return false
     end
 

@@ -180,6 +180,8 @@ function CraftSim.COOLDOWNS.UI:Init()
         frameLevel = CraftSim.UTIL:NextFrameLevel()
     })
 
+    self.module.frame = CraftSim.COOLDOWNS.frame
+
     ---@class CraftSim.COOLDOWNS.FRAME.CONTENT : Frame
     CraftSim.COOLDOWNS.frame.content = CraftSim.COOLDOWNS.frame.content
 
@@ -233,6 +235,11 @@ function CraftSim.COOLDOWNS.UI:Init()
     self:InitializeCooldownOptionsTab(cooldownOptionsTab)
 
     GGUI.BlizzardTabSystem { overviewTab, cooldownOptionsTab }
+
+    -- Profession may already be open (reload / event fired before this module inited).
+    if ProfessionsFrame and ProfessionsFrame:IsVisible() then
+        self:Update()
+    end
 end
 
 function CraftSim.COOLDOWNS.UI:CreateCooldownColumnOptions(includeActionColumn)
@@ -702,6 +709,9 @@ function CraftSim.COOLDOWNS.UI:InitializeCooldownOptionsTab(cooldownOptionsTab)
 end
 
 function CraftSim.COOLDOWNS.UI:Update()
+    if not CraftSim.COOLDOWNS.frame then
+        return
+    end
     CraftSim.COOLDOWNS.UI:UpdateList()
     CraftSim.COOLDOWNS.UI:UpdateTimers()
 end
@@ -741,8 +751,15 @@ function CraftSim.COOLDOWNS.UI:SortBlacklistRowsDefault(rowA, rowB)
 end
 
 function CraftSim.COOLDOWNS.UI:UpdateList()
-    local cooldownList = CraftSim.COOLDOWNS.frame.content.overviewTab.content.cooldownList
-    local blacklistList = CraftSim.COOLDOWNS.frame.content.cooldownOptionsTab.content.blacklistList
+    local frame = CraftSim.COOLDOWNS.frame
+    if not frame or not frame.content then
+        return
+    end
+    local cooldownList = frame.content.overviewTab.content.cooldownList
+    local blacklistList = frame.content.cooldownOptionsTab.content.blacklistList
+    if not cooldownList or not blacklistList then
+        return
+    end
 
     cooldownList:Remove()
     blacklistList:Remove()
@@ -807,8 +824,15 @@ function CraftSim.COOLDOWNS.UI:UpdateList()
 end
 
 function CraftSim.COOLDOWNS.UI:UpdateTimers()
-    local cooldownList = CraftSim.COOLDOWNS.frame.content.overviewTab.content.cooldownList
-    local blacklistList = CraftSim.COOLDOWNS.frame.content.cooldownOptionsTab.content.blacklistList
+    local frame = CraftSim.COOLDOWNS.frame
+    if not frame or not frame.content then
+        return
+    end
+    local cooldownList = frame.content.overviewTab.content.cooldownList
+    local blacklistList = frame.content.cooldownOptionsTab.content.blacklistList
+    if not cooldownList or not blacklistList then
+        return
+    end
 
     for _, activeRow in pairs(cooldownList.activeRows) do
         activeRow:UpdateTimers()
@@ -823,5 +847,8 @@ function CraftSim.COOLDOWNS.UI:VisibleByContext()
 end
 
 function CraftSim.COOLDOWNS.UI:RestoreFrameConfig()
+    if not CraftSim.COOLDOWNS.frame then
+        return
+    end
     CraftSim.COOLDOWNS.frame:RestoreSavedConfig(ProfessionsFrame)
 end

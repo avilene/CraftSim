@@ -43,7 +43,9 @@ end
 
 function CraftSim.COOLDOWNS:PeriodicTimerUpdate()
     if not CraftSim.COOLDOWNS.isUpdatingTimers then return end
-    CraftSim.COOLDOWNS.UI:UpdateTimers()
+    if CraftSim.COOLDOWNS.frame then
+        CraftSim.COOLDOWNS.UI:UpdateTimers()
+    end
     C_Timer.After(1, CraftSim.COOLDOWNS.PeriodicTimerUpdate)
 end
 
@@ -63,13 +65,17 @@ end
 function CraftSim.COOLDOWNS:CRAFTSIM_PROFESSION_OPENED(_, selectedTab, _, _)
     if selectedTab == CraftSim.CONST.PROFESSIONS_TAB.SPEC_INFO then
         self.UI:Update()
-        self:StartTimerUpdate()
+        if CraftSim.COOLDOWNS.frame then
+            self:StartTimerUpdate()
+        end
     end
 end
 
 function CraftSim.COOLDOWNS:CRAFTSIM_RECIPE_DATA_UPDATED()
     self.UI:Update()
-    self:StartTimerUpdate()
+    if CraftSim.COOLDOWNS.frame then
+        self:StartTimerUpdate()
+    end
 end
 
 ---@param moduleID CraftSim.ModuleID

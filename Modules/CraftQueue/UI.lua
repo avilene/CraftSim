@@ -913,6 +913,8 @@ function CraftSim.CRAFTQ.UI:Init()
         frameLevel = CraftSim.UTIL:NextFrameLevel()
     })
 
+    self.module.frame = CraftSim.CRAFTQ.frame
+
     ---@param frame CraftSim.CraftQueue.Frame
     local function createContent(frame)
         local tabContentSizeX = 1010
@@ -4112,13 +4114,17 @@ function CraftSim.CRAFTQ.UI:UpdateCraftQueueRowByCraftQueueItem(row, craftQueueI
 end
 
 function CraftSim.CRAFTQ.UI:VisibleByContext()
-    if not CraftSim.DB.OPTIONS:IsModuleEnabled("MODULE_CRAFT_QUEUE") then
+    if not self.module or not CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID) then
         return false
     end
-    return CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID)
+    return true
 end
 
 function CraftSim.CRAFTQ.UI:RestoreFrameConfig()
-    CraftSim.CRAFTQ.frame:RestoreSavedConfig(ProfessionsFrame)
-    CraftSim.CRAFTQ.patronRewardValuesFrame:RestoreSavedConfig(ProfessionsFrame)
+    if CraftSim.CRAFTQ.frame then
+        CraftSim.CRAFTQ.frame:RestoreSavedConfig(ProfessionsFrame)
+    end
+    if CraftSim.CRAFTQ.patronRewardValuesFrame then
+        CraftSim.CRAFTQ.patronRewardValuesFrame:RestoreSavedConfig(ProfessionsFrame)
+    end
 end
