@@ -14,14 +14,22 @@ CraftSim.SALVAGE_STATS.UI = {}
 
 local LIST_HEADER_SCALE = 0.85
 local TAB_CONTENT_SIZE_X = 520
-local TAB_CONTENT_SIZE_Y = 460
+local TAB_CONTENT_SIZE_Y = 480
 local LIST_PAD_X = 10
-local LIST_PAD_Y = 8
-local LIST_SIZE_X = TAB_CONTENT_SIZE_X - (LIST_PAD_X * 2) - 26
-local LIST_SIZE_Y = 175
+local LIST_PAD_Y = 10
 local LIST_ROW_HEIGHT = 20
-local ITEM_COLUMN_WIDTH = 200
-local ITEM_NAME_WIDTH = 165
+local COLUMN_WIDTHS = {
+    item = 210,
+    rate = 58,
+    expected = 58,
+    price = 78,
+    value = 86,
+}
+local LIST_SIZE_X = COLUMN_WIDTHS.item + COLUMN_WIDTHS.rate + COLUMN_WIDTHS.expected
+    + COLUMN_WIDTHS.price + COLUMN_WIDTHS.value + 24
+local LIST_SIZE_Y = 165
+local ITEM_TEXT_WIDTH = COLUMN_WIDTHS.item - 10
+local LIST_LAYOUT_VERSION = "V2"
 
 ---@param itemID number
 ---@return string
@@ -93,6 +101,12 @@ local function createInputDropdown(tabContent, summaryPrefix, itemIDs, onSelect)
     tabContent[summaryPrefix .. "BatchInput"].textInput.frame:ClearAllPoints()
     tabContent[summaryPrefix .. "BatchInput"].textInput.frame:SetPoint(
         "TOPLEFT", tabContent[summaryPrefix .. "InputDropdown"].frame, "BOTTOMLEFT", 0, -8)
+    tabContent[summaryPrefix .. "BatchInput"].frame:ClearAllPoints()
+    tabContent[summaryPrefix .. "BatchInput"].frame:SetPoint(
+        "TOPLEFT", tabContent[summaryPrefix .. "InputDropdown"].frame, "BOTTOMLEFT", 0, -8)
+    tabContent[summaryPrefix .. "BatchLabel"].frame:ClearAllPoints()
+    tabContent[summaryPrefix .. "BatchLabel"].frame:SetPoint(
+        "LEFT", tabContent[summaryPrefix .. "BatchInput"].frame, "RIGHT", 10, 0)
 
     local items = GUTIL:Map(itemIDs, function(itemID)
         return Item:CreateFromItemID(itemID)
@@ -148,81 +162,62 @@ local function createDropList(tabContent, listName)
         sizeY = LIST_SIZE_Y,
         rowHeight = LIST_ROW_HEIGHT,
         showBorder = true,
-        savedVariablesTableLayoutConfig = CraftSim.UTIL:GetFrameListLayoutConfig(listName),
+        savedVariablesTableLayoutConfig = CraftSim.UTIL:GetFrameListLayoutConfig(listName .. "_" .. LIST_LAYOUT_VERSION),
         columnOptions = {
             {
                 label = L("SALVAGE_STATS_ITEM_HEADER"),
-                width = ITEM_COLUMN_WIDTH,
+                width = COLUMN_WIDTHS.item,
                 justifyOptions = { type = "H", align = "LEFT" },
-                resizable = true,
                 headerScale = LIST_HEADER_SCALE,
-                resizeCallback = function(itemColumn, newWidth)
-                    if itemColumn.text then
-                        itemColumn.text:SetWidth(math.max(60, newWidth - 28))
-                    end
-                end,
             },
             {
                 label = L("SALVAGE_STATS_RATE_HEADER"),
-                width = 52,
-                justifyOptions = { type = "H", align = "RIGHT" },
-                resizable = true,
+                width = COLUMN_WIDTHS.rate,
+                justifyOptions = { type = "H", align = "CENTER" },
                 headerScale = LIST_HEADER_SCALE,
             },
             {
                 label = L("SALVAGE_STATS_EXPECTED_QTY_HEADER"),
-                width = 52,
-                justifyOptions = { type = "H", align = "RIGHT" },
-                resizable = true,
+                width = COLUMN_WIDTHS.expected,
+                justifyOptions = { type = "H", align = "CENTER" },
                 headerScale = LIST_HEADER_SCALE,
             },
             {
                 label = L("SALVAGE_STATS_PRICE_HEADER"),
-                width = 72,
-                justifyOptions = { type = "H", align = "RIGHT" },
-                resizable = true,
+                width = COLUMN_WIDTHS.price,
+                justifyOptions = { type = "H", align = "CENTER" },
                 headerScale = LIST_HEADER_SCALE,
             },
             {
                 label = L("SALVAGE_STATS_VALUE_HEADER"),
-                width = 80,
-                justifyOptions = { type = "H", align = "RIGHT" },
-                resizable = true,
+                width = COLUMN_WIDTHS.value,
+                justifyOptions = { type = "H", align = "CENTER" },
                 headerScale = LIST_HEADER_SCALE,
             },
         },
         rowConstructor = function(columns)
             local itemColumn = columns[1]
-            itemColumn.icon = GGUI.Icon({
-                parent = itemColumn,
-                anchorParent = itemColumn,
-                anchorA = "LEFT",
-                anchorB = "LEFT",
-                offsetX = 2,
-                sizeX = 16,
-                sizeY = 16,
-                qualityIconScale = 1,
-            })
+            itemColumn:SetClipsChildren(true)
             itemColumn.text = GGUI.Text({
                 parent = itemColumn,
                 anchorParent = itemColumn,
                 anchorA = "LEFT",
                 anchorB = "LEFT",
-                offsetX = 22,
+                offsetX = 4,
                 scale = 0.85,
-                fixedWidth = ITEM_NAME_WIDTH,
+                fixedWidth = ITEM_TEXT_WIDTH,
                 justifyOptions = { type = "H", align = "LEFT" },
             })
 
             for index = 2, #columns do
                 local column = columns[index]
+                column:SetClipsChildren(true)
                 column.text = GGUI.Text({
                     parent = column,
                     anchorParent = column,
                     justifyOptions = column.justifyOptions,
-                    anchorA = "RIGHT",
-                    anchorB = "RIGHT",
-                    offsetX = -4,
+                    anchorA = "CENTER",
+                    anchorB = "CENTER",
                     scale = 0.9,
                 })
             end
@@ -273,16 +268,16 @@ local function initSummarySection(tabContent, summaryPrefix)
 
     tabContent[summaryPrefix .. "BatchLabel"] = GGUI.Text({
         parent = tabContent,
-        anchorParent = tabContent[summaryPrefix .. "BatchInput"].textInput.frame,
+        anchorParent = tabContent[summaryPrefix .. "BatchInput"].frame,
         anchorA = "LEFT",
         anchorB = "RIGHT",
-        offsetX = 8,
+        offsetX = 10,
         text = L("SALVAGE_STATS_BATCH_LABEL"),
     })
 
     tabContent[summaryPrefix .. "CostTitle"] = GGUI.Text({
         parent = tabContent,
-        anchorParent = tabContent[summaryPrefix .. "BatchInput"].textInput.frame,
+        anchorParent = tabContent[summaryPrefix .. "BatchInput"].frame,
         anchorA = "TOPLEFT",
         anchorB = "BOTTOMLEFT",
         offsetY = -12,
@@ -344,6 +339,7 @@ local function initSummarySection(tabContent, summaryPrefix)
         scale = 0.8,
         wrap = true,
         fixedWidth = TAB_CONTENT_SIZE_X - 40,
+        justifyOptions = { type = "H", align = "LEFT" },
     })
 end
 
@@ -371,8 +367,8 @@ local function updateDropList(dropList, result)
             local valueText = CraftSim.UTIL:FormatMoney(drop.expectedValue, true)
 
             dropList:Add(function(row, columns)
-                columns[1].icon:SetItem(item)
-                columns[1].text:SetText(itemName)
+                local itemIcon = GUTIL:IconToText(item:GetItemIcon(), 16, 16, 0, -2)
+                columns[1].text:SetText(itemIcon .. " " .. itemName)
                 columns[2].text:SetText(rateText)
                 columns[3].text:SetText(qtyText)
                 columns[4].text:SetText(priceText)
@@ -509,13 +505,14 @@ function CraftSim.SALVAGE_STATS.UI:Init()
 
         local disenchantContent = parentFrame.content.disenchantTab.content
         initSummarySection(disenchantContent, "disenchant")
+        disenchantContent.disenchantBatchInput:SetValue(CraftSim.SALVAGE_STATS_DATA.DISENCHANT_DEFAULT_BATCH_SIZE)
 
         disenchantContent.disenchantVariantTitle = GGUI.Text({
             parent = disenchantContent,
             anchorParent = disenchantContent.disenchantNote.frame,
             anchorA = "TOPLEFT",
             anchorB = "BOTTOMLEFT",
-            offsetY = -8,
+            offsetY = -4,
             text = L("SALVAGE_STATS_VARIANT_LABEL"),
         })
 
@@ -527,7 +524,7 @@ function CraftSim.SALVAGE_STATS.UI:Init()
                     or disenchantContent.disenchantVariantButtons[index - 1].frame,
                 anchorA = index == 1 and "TOPLEFT" or "LEFT",
                 anchorB = index == 1 and "BOTTOMLEFT" or "RIGHT",
-                offsetY = index == 1 and -6 or 0,
+                offsetY = index == 1 and -4 or 0,
                 offsetX = index == 1 and 0 or 5,
                 label = shuffleData.label,
                 sizeX = 120,
@@ -616,10 +613,7 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
         local inputUnitPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(inputItemID, true) or 0
         local disenchantResult = CraftSim.SALVAGE_STATS:CalculateStats(
             disenchantData, disenchantBatchSize, inputUnitPrice, true, inputItemID)
-        local inputItem = Item:CreateFromItemID(inputItemID)
-        local inputLabel = (inputItem:GetItemLink() or disenchantData.label) ..
-            " x" .. tostring(disenchantBatchSize)
-
+        local inputLabel = getFallbackItemLabel(inputItemID) .. " x" .. tostring(disenchantBatchSize)
         updateSummary(disenchantContent, "disenchant", disenchantResult, inputLabel,
             L("SALVAGE_STATS_DISENCHANT_NOTE"))
         updateDropList(disenchantContent.disenchantDropList, disenchantResult)
