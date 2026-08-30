@@ -19,17 +19,19 @@ local LIST_PAD_X = 10
 local LIST_PAD_Y = 10
 local LIST_ROW_HEIGHT = 20
 local COLUMN_WIDTHS = {
-    item = 210,
-    rate = 58,
-    expected = 58,
-    price = 78,
-    value = 86,
+    item = 140,
+    rate = 50,
+    observed = 58,
+    expected = 50,
+    got = 42,
+    price = 68,
+    value = 76,
 }
-local LIST_SIZE_X = COLUMN_WIDTHS.item + COLUMN_WIDTHS.rate + COLUMN_WIDTHS.expected
-    + COLUMN_WIDTHS.price + COLUMN_WIDTHS.value + 24
+local LIST_SIZE_X = COLUMN_WIDTHS.item + COLUMN_WIDTHS.rate + COLUMN_WIDTHS.observed
+    + COLUMN_WIDTHS.expected + COLUMN_WIDTHS.got + COLUMN_WIDTHS.price + COLUMN_WIDTHS.value + 24
 local LIST_SIZE_Y = 165
 local ITEM_TEXT_WIDTH = COLUMN_WIDTHS.item - 10
-local LIST_LAYOUT_VERSION = "V2"
+local LIST_LAYOUT_VERSION = "V3"
 
 ---@param itemID number
 ---@return string
@@ -175,8 +177,20 @@ local function createDropList(tabContent, listName)
                 headerScale = LIST_HEADER_SCALE,
             },
             {
+                label = L("SALVAGE_STATS_OBSERVED_RATE_HEADER"),
+                width = COLUMN_WIDTHS.observed,
+                justifyOptions = { type = "H", align = "CENTER" },
+                headerScale = LIST_HEADER_SCALE,
+            },
+            {
                 label = L("SALVAGE_STATS_EXPECTED_QTY_HEADER"),
                 width = COLUMN_WIDTHS.expected,
+                justifyOptions = { type = "H", align = "CENTER" },
+                headerScale = LIST_HEADER_SCALE,
+            },
+            {
+                label = L("SALVAGE_STATS_OBSERVED_QTY_HEADER"),
+                width = COLUMN_WIDTHS.got,
                 justifyOptions = { type = "H", align = "CENTER" },
                 headerScale = LIST_HEADER_SCALE,
             },
@@ -341,36 +355,98 @@ local function initSummarySection(tabContent, summaryPrefix)
     })
 end
 
+---@param matchStatus string
+---@param rateText string
+---@return string
+local function colorizeObservedRate(rateText, matchStatus)
+    if matchStatus == "ok" then
+        return GUTIL:ColorizeText(rateText, GUTIL.COLORS.GREEN)
+    elseif matchStatus == "off" then
+        return GUTIL:ColorizeText(rateText, GUTIL.COLORS.RED)
+    elseif matchStatus == "low" then
+        return GUTIL:ColorizeText(rateText, GUTIL.COLORS.GREY)
+    end
+    return rateText
+end
+
 ---@param dropList GGUI.FrameList
 ---@param result CraftSim.SalvageStatsCalculationResult?
-local function updateDropList(dropList, result)
+---@param session CraftSim.SalvageStatsProspectingSession?
+---@param selectedItemID number?
+local function updateDropList(dropList, result, session, selectedItemID)
     dropList:Remove()
     if not result then
         dropList:UpdateDisplay()
         return
     end
 
-    local items = GUTIL:Map(result.drops, function(drop)
+    local showTracking = session
+        and session.oreConsumed > 0
+        and CraftSim.SALVAGE_STATS:SessionMatchesSelectedOre(session, selectedItemID)
+
+    local drops = {}
+    for _, drop in ipairs(result.drops) do
+        table.insert(drops, drop)
+    end
+
+    if showTracking then
+        local listedItemIDs = {}
+        for _, drop in ipairs(drops) do
+            listedItemIDs[drop.itemID] = true
+        end
+        local extraItemIDs = {}
+        for itemID, observedQty in pairs(session.observedQty) do
+            if not listedItemIDs[itemID] and observedQty > 0 then
+                table.insert(extraItemIDs, itemID)
+            end
+        end
+        table.sort(extraItemIDs)
+        for _, itemID in ipairs(extraItemIDs) do
+            table.insert(drops, {
+                itemID = itemID,
+                dropRate = 0,
+                expectedQty = 0,
+                price = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(itemID, true) or 0,
+                expectedValue = 0,
+            })
+        end
+    end
+
+    local items = GUTIL:Map(drops, function(drop)
         return Item:CreateFromItemID(drop.itemID)
     end)
 
     GUTIL:ContinueOnAllItemsLoaded(items, function()
-        for index, drop in ipairs(result.drops) do
+        for index, drop in ipairs(drops) do
             local item = items[index]
             local itemName = item:GetItemName() or getFallbackItemLabel(drop.itemID)
             local itemLink = item:GetItemLink()
             local rateText = GUTIL:Round(drop.dropRate * 100, 2) .. "%"
             local qtyText = tostring(drop.expectedQty)
+            local observedRateText = "-"
+            local gotText = "-"
             local priceText = CraftSim.UTIL:FormatMoney(drop.price, true)
             local valueText = CraftSim.UTIL:FormatMoney(drop.expectedValue, true)
+
+            if showTracking then
+                local comparison = CraftSim.SALVAGE_STATS:GetDropComparison(
+                    drop.dropRate, session.observedQty[drop.itemID] or 0, session.oreConsumed)
+                observedRateText = colorizeObservedRate(
+                    GUTIL:Round(comparison.observedRate * 100, 2) .. "%", comparison.matchStatus)
+                gotText = tostring(comparison.observedQty)
+                qtyText = tostring(GUTIL:Round(comparison.sessionExpectedQty, 1))
+                valueText = CraftSim.UTIL:FormatMoney(comparison.sessionExpectedQty * drop.price, true)
+            end
 
             dropList:Add(function(row, columns)
                 local itemIcon = GUTIL:IconToText(item:GetItemIcon(), 16, 16, 0, -2)
                 columns[1].text:SetText(itemIcon .. " " .. itemName)
                 columns[2].text:SetText(rateText)
-                columns[3].text:SetText(qtyText)
-                columns[4].text:SetText(priceText)
-                columns[5].text:SetText(valueText)
+                columns[3].text:SetText(observedRateText)
+                columns[4].text:SetText(qtyText)
+                columns[5].text:SetText(gotText)
+                columns[6].text:SetText(priceText)
+                columns[7].text:SetText(valueText)
 
                 if itemLink then
                     row.tooltipOptions = {
@@ -384,6 +460,43 @@ local function updateDropList(dropList, result)
 
         dropList:UpdateDisplay()
     end)
+end
+
+---@param tabContent Frame
+local function updateProspectingTrackingControls(tabContent)
+    local session = CraftSim.SALVAGE_STATS.prospectingSession
+    local selectedItemID = tabContent.prospectingSelectedInputItemID
+    local canTrack = selectedItemID and CraftSim.SALVAGE_STATS:GetProspectingDataByItemID(selectedItemID) ~= nil
+
+    if tabContent.prospectingTrackButton then
+        tabContent.prospectingTrackButton:SetStatus(session.tracking and "Tracking" or "Idle")
+        tabContent.prospectingTrackButton:SetEnabled(session.tracking or canTrack)
+    end
+
+    if tabContent.prospectingResetButton then
+        tabContent.prospectingResetButton:SetEnabled(session.tracking or session.oreConsumed > 0)
+    end
+
+    if not tabContent.prospectingTrackStatus then
+        return
+    end
+
+    if not session.itemID or (session.oreConsumed <= 0 and not session.tracking) then
+        tabContent.prospectingTrackStatus:SetText(L("SALVAGE_STATS_TRACKING_IDLE"))
+        return
+    end
+
+    local inputData = CraftSim.SALVAGE_STATS:GetProspectingDataByItemID(session.itemID)
+    local oreLabel = (inputData and inputData.label) or getFallbackItemLabel(session.itemID)
+    if session.tracking then
+        tabContent.prospectingTrackStatus:SetText(string.format(
+            L("SALVAGE_STATS_TRACKING_ACTIVE"),
+            oreLabel, tostring(session.crafts), tostring(session.oreConsumed)))
+    else
+        tabContent.prospectingTrackStatus:SetText(string.format(
+            L("SALVAGE_STATS_TRACKING_STOPPED"),
+            oreLabel, tostring(session.crafts), tostring(session.oreConsumed)))
+    end
 end
 
 ---@param tabContent Frame
@@ -501,6 +614,75 @@ function CraftSim.SALVAGE_STATS.UI:Init()
         prospectingContent.prospectingDropList = createDropList(
             prospectingContent, "SALVAGE_STATS_PROSPECTING_LIST")
 
+        prospectingContent.prospectingTrackButton = GGUI.Button({
+            parent = prospectingContent,
+            anchorParent = prospectingContent,
+            anchorA = "TOPRIGHT",
+            anchorB = "TOPRIGHT",
+            offsetX = -28,
+            offsetY = -8,
+            label = L("SALVAGE_STATS_TRACK_START"),
+            sizeX = 15,
+            sizeY = 20,
+            adjustWidth = true,
+            initialStatusID = "Idle",
+            clickCallback = function()
+                CraftSim.SALVAGE_STATS:ToggleProspectingTracking(
+                    prospectingContent.prospectingSelectedInputItemID)
+            end,
+        })
+        prospectingContent.prospectingTrackButton:SetStatusList {
+            {
+                statusID = "Idle",
+                adjustWidth = true,
+                sizeX = 15,
+                label = L("SALVAGE_STATS_TRACK_START"),
+                enabled = true,
+            },
+            {
+                statusID = "Tracking",
+                adjustWidth = true,
+                sizeX = 15,
+                label = L("SALVAGE_STATS_TRACK_STOP"),
+                enabled = true,
+            },
+        }
+
+        prospectingContent.prospectingTrackHelp = GGUI.HelpIcon({
+            parent = prospectingContent,
+            anchorParent = prospectingContent.prospectingTrackButton.frame,
+            anchorA = "LEFT",
+            anchorB = "RIGHT",
+            offsetX = 4,
+            text = L("SALVAGE_STATS_TRACK_HELP"),
+        })
+
+        prospectingContent.prospectingResetButton = GGUI.Button({
+            parent = prospectingContent,
+            anchorParent = prospectingContent.prospectingTrackButton.frame,
+            anchorA = "RIGHT",
+            anchorB = "LEFT",
+            offsetX = -5,
+            label = L("SALVAGE_STATS_TRACK_RESET"),
+            sizeX = 15,
+            sizeY = 20,
+            adjustWidth = true,
+            clickCallback = function()
+                CraftSim.SALVAGE_STATS:ResetProspectingTracking()
+            end,
+        })
+
+        prospectingContent.prospectingTrackStatus = GGUI.Text({
+            parent = prospectingContent,
+            anchorParent = prospectingContent.prospectingDropList.frame,
+            anchorA = "BOTTOMLEFT",
+            anchorB = "TOPLEFT",
+            offsetY = 4,
+            scale = 0.85,
+            text = L("SALVAGE_STATS_TRACKING_IDLE"),
+            justifyOptions = { type = "H", align = "LEFT" },
+        })
+
         local disenchantContent = parentFrame.content.disenchantTab.content
         initSummarySection(disenchantContent, "disenchant")
         disenchantContent.disenchantBatchInput:SetValue(CraftSim.SALVAGE_STATS_DATA.DISENCHANT_DEFAULT_BATCH_SIZE)
@@ -562,6 +744,10 @@ function CraftSim.SALVAGE_STATS.UI:Init()
 
     createContent(frame)
     self.module.frame = frame
+
+    frame:HookScript("OnShow", function()
+        CraftSim.SALVAGE_STATS.UI:Update(CraftSim.MODULES.recipeData)
+    end)
 end
 
 ---@param recipeData CraftSim.RecipeData?
@@ -590,12 +776,14 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
 
         updateSummary(prospectingContent, "prospecting", prospectingResult, nil,
             L("SALVAGE_STATS_PROSPECTING_NOTE"))
-        updateDropList(prospectingContent.prospectingDropList, prospectingResult)
+        updateDropList(prospectingContent.prospectingDropList, prospectingResult,
+            CraftSim.SALVAGE_STATS.prospectingSession, selectedProspectingItemID)
     else
         updateSummary(prospectingContent, "prospecting", nil, nil,
             L("SALVAGE_STATS_PROSPECTING_NOTE"))
         updateDropList(prospectingContent.prospectingDropList, nil)
     end
+    updateProspectingTrackingControls(prospectingContent)
 
     local disenchantIndex = disenchantContent.selectedDisenchantIndex or 1
     local disenchantData = CraftSim.SALVAGE_STATS_DATA.DISENCHANT_SHUFFLE[disenchantIndex]

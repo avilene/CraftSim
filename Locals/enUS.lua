@@ -672,6 +672,16 @@ function CraftSim.LOCAL_EN:GetData()
         SALVAGE_STATS_INPUT_SELECT_LABEL = "Select input",
         SALVAGE_STATS_MILLING_NOTE =
         "Assumes ~15 pigments per 10 herbs. Input cost uses the selected herb's AH price. Profit uses a 5% AH cut.",
+        SALVAGE_STATS_OBSERVED_RATE_HEADER = "Observed",
+        SALVAGE_STATS_OBSERVED_QTY_HEADER = "Got",
+        SALVAGE_STATS_TRACK_START = "Track Prospects",
+        SALVAGE_STATS_TRACK_STOP = "Stop Tracking",
+        SALVAGE_STATS_TRACK_RESET = "Reset",
+        SALVAGE_STATS_TRACK_HELP =
+        "Records prospecting crafts for the selected ore and compares actual drops to the spreadsheet rates.\n\nRates are per ore unit and already assume ~25% resourcefulness. Returned ore is not counted as a drop.\n\nGreen observed rates are a rough match. Grey means the sample is still too small for that item.",
+        SALVAGE_STATS_TRACKING_IDLE = "Not tracking",
+        SALVAGE_STATS_TRACKING_ACTIVE = "Tracking %s: %s crafts · %s ore",
+        SALVAGE_STATS_TRACKING_STOPPED = "Stopped · %s: %s crafts · %s ore",
         CONTROL_PANEL_MODULES_RECIPE_SCAN_LABEL = "Recipe Scan",
         CONTROL_PANEL_MODULES_RECIPE_SCAN_TOOLTIP = "Module that scans your recipe list based on various options",
         CONTROL_PANEL_MODULES_CUSTOMER_HISTORY_LABEL = "Customer History",
