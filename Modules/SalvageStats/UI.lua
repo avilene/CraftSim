@@ -737,7 +737,7 @@ function CraftSim.SALVAGE_STATS.UI:Init()
             prospectingContent,
             prospectingContent.prospectingListAnchor,
             prospectingContent.prospectingTrackStatus.frame,
-            -4)
+            -8)
 
         prospectingContent.prospectingDropList = createDropList(
             prospectingContent,
