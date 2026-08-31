@@ -644,6 +644,44 @@ function CraftSim.LOCAL_EN:GetData()
         CONTROL_PANEL_MODULES_STATISTICS_LABEL = "Statistics",
         CONTROL_PANEL_MODULES_STATISTICS_TOOLTIP =
         "Module that shows detailed outcome statistics for the currently open recipe",
+        CONTROL_PANEL_MODULES_SALVAGE_STATS_LABEL = "Salvage Stats",
+        CONTROL_PANEL_MODULES_SALVAGE_STATS_TOOLTIP =
+        "Prospecting, milling, and disenchant shuffle profit calculator based on community drop rate data",
+        SALVAGE_STATS_TITLE = "Salvage Stats",
+        SALVAGE_STATS_PROSPECTING_TAB = "Prospecting",
+        SALVAGE_STATS_DISENCHANT_TAB = "Disenchant Shuffle",
+        SALVAGE_STATS_MILLING_TAB = "Milling",
+        SALVAGE_STATS_INPUT_LABEL = "Input:",
+        SALVAGE_STATS_BATCH_LABEL = "units",
+        SALVAGE_STATS_MILLING_BATCH_LABEL = "herbs",
+        SALVAGE_STATS_COST_LABEL = "Cost:",
+        SALVAGE_STATS_TOTAL_VALUE_LABEL = "Total Value (after AH cut):",
+        SALVAGE_STATS_PROFIT_LABEL = "Profit:",
+        SALVAGE_STATS_ITEM_HEADER = "Item",
+        SALVAGE_STATS_RATE_HEADER = "Rate",
+        SALVAGE_STATS_EXPECTED_QTY_HEADER = "Expected",
+        SALVAGE_STATS_PRICE_HEADER = "Price",
+        SALVAGE_STATS_VALUE_HEADER = "Value",
+        SALVAGE_STATS_VARIANT_LABEL = "Evercore Rank:",
+        SALVAGE_STATS_NO_PROSPECTING_DATA = "Select a supported Midnight prospecting ore",
+        SALVAGE_STATS_PROSPECTING_NOTE =
+        "Drop rates assume ~25% resourcefulness. Profit uses AH prices and a 5% cut.",
+        SALVAGE_STATS_DISENCHANT_NOTE =
+        "Resourcefulness is not included. Profit uses AH prices and a 5% cut.",
+        SALVAGE_STATS_NO_MILLING_DATA = "Select a supported Midnight milling herb",
+        SALVAGE_STATS_INPUT_SELECT_LABEL = "Select input",
+        SALVAGE_STATS_MILLING_NOTE =
+        "Assumes ~15 pigments per 10 herbs. Input cost uses the selected herb's AH price. Profit uses a 5% AH cut.",
+        SALVAGE_STATS_OBSERVED_RATE_HEADER = "Observed",
+        SALVAGE_STATS_OBSERVED_QTY_HEADER = "Got",
+        SALVAGE_STATS_TRACK_START = "Track Prospects",
+        SALVAGE_STATS_TRACK_STOP = "Stop Tracking",
+        SALVAGE_STATS_TRACK_RESET = "Reset",
+        SALVAGE_STATS_TRACK_HELP =
+        "Records prospecting crafts for the selected ore and compares actual drops to the spreadsheet rates.\n\nRates are per ore unit and already assume ~25% resourcefulness. Returned ore is not counted as a drop.\n\nGreen observed rates are a rough match. Grey means the sample is still too small for that item.",
+        SALVAGE_STATS_TRACKING_IDLE = "Not tracking",
+        SALVAGE_STATS_TRACKING_ACTIVE = "Tracking %s: %s crafts · %s ore",
+        SALVAGE_STATS_TRACKING_STOPPED = "Stopped · %s: %s crafts · %s ore",
         CONTROL_PANEL_MODULES_RECIPE_SCAN_LABEL = "Recipe Scan",
         CONTROL_PANEL_MODULES_RECIPE_SCAN_TOOLTIP = "Module that scans your recipe list based on various options",
         CONTROL_PANEL_MODULES_CUSTOMER_HISTORY_LABEL = "Customer History",
@@ -763,7 +801,14 @@ function CraftSim.LOCAL_EN:GetData()
         CRAFT_QUEUE_PATRON_ORDERS_KNOWLEDGE_POINTS_TOOLTIP = "Include Orders with Knowledge Point Rewards",
         CRAFT_QUEUE_PATRON_ORDERS_KNOWLEDGE_POINTS_MAX_COST = f.bb("Knowledge Point") .. " Max Cost: ",
         CRAFT_QUEUE_PATRON_ORDERS_KNOWLEDGE_POINTS_MAX_COST_TOOLTIP =
-        "Maximum allowed gold cost of 1 Knowledge Point\n\nFormat: ",
+        "Maximum allowed gold cost of 1 Knowledge Point.\n\nUsed as the default unless a character override with a per-profession value is set.\n\nFormat: ",
+        CRAFT_QUEUE_PATRON_ORDERS_KP_COST_CHARACTER_OVERRIDE = "Override for %s",
+        CRAFT_QUEUE_PATRON_ORDERS_KP_COST_CHARACTER_OVERRIDE_TOOLTIP =
+        "When enabled, this character uses per-profession knowledge max costs instead of the default.\n\nSet a profession to " ..
+            f.bb("0") .. " if this character is fully knowledge-capped and should not pay for knowledge rewards.",
+        CRAFT_QUEUE_PATRON_ORDERS_KP_COST_PER_PROFESSION = "Per Profession",
+        CRAFT_QUEUE_PATRON_ORDERS_KP_COST_PER_PROFESSION_TOOLTIP =
+        "Set a knowledge max cost for a specific profession while the character override is enabled. Reset to use the default cost.",
         CRAFT_QUEUE_PATRON_ORDERS_MAX_COST = f.bb("Patron Order") .. " Max Cost: ",
         CRAFT_QUEUE_PATRON_ORDERS_MAX_COST_TOOLTIP = "Maximum allowed gold cost of a patron order\n\nFormat: ",
         CRAFT_QUEUE_PATRON_ORDERS_MAX_DURATION_HOURS = f.bb("Patron Order") .. " Max Duration (hours): ",

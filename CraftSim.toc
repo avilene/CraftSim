@@ -123,6 +123,9 @@ Modules/CustomerHistory/UI.lua
 Modules/Statistics/Statistics.lua
 Modules/Statistics/UI.lua
 
+Modules/SalvageStats/SalvageStats.lua
+Modules/SalvageStats/UI.lua
+
 Modules/CraftLog/CraftLog.lua
 Modules/CraftLog/UI.lua
 
@@ -166,6 +169,7 @@ Modules/WorkOrderTracker/UI.lua
 Data/EnchantData.lua
 Data/ToolEnchantData.lua
 Data/ReagentWeightData.lua
+Data/SalvageStatsData.lua
 Data/ConcentrationCurveData.lua
 Data/OptionalReagentData.lua
 Data/OptionalCurrencyReagentData.lua
