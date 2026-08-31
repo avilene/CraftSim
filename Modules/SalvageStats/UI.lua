@@ -13,10 +13,12 @@ CraftSim.SALVAGE_STATS = CraftSim.SALVAGE_STATS
 CraftSim.SALVAGE_STATS.UI = {}
 
 local LIST_HEADER_SCALE = 0.85
+local FRAME_SIZE_Y = 500
+local TAB_HEADER_OFFSET = 30
 local TAB_CONTENT_SIZE_X = 520
-local TAB_CONTENT_SIZE_Y = 480
+local TAB_CONTENT_SIZE_Y = FRAME_SIZE_Y - TAB_HEADER_OFFSET
 local LIST_PAD_X = 10
-local LIST_PAD_Y = 10
+local LIST_PAD_Y = 12
 local LIST_ROW_HEIGHT = 20
 local COLUMN_WIDTHS = {
     item = 140,
@@ -28,10 +30,10 @@ local COLUMN_WIDTHS = {
     value = 76,
 }
 local LIST_SIZE_X = COLUMN_WIDTHS.item + COLUMN_WIDTHS.rate + COLUMN_WIDTHS.observed
-    + COLUMN_WIDTHS.expected + COLUMN_WIDTHS.got + COLUMN_WIDTHS.price + COLUMN_WIDTHS.value + 24
-local LIST_SIZE_Y = 165
+    + COLUMN_WIDTHS.expected + COLUMN_WIDTHS.got + COLUMN_WIDTHS.price + COLUMN_WIDTHS.value + 20
 local ITEM_TEXT_WIDTH = COLUMN_WIDTHS.item - 10
 local LIST_LAYOUT_VERSION = "V3"
+local LIST_DEFAULT_SIZE_Y = 120
 
 ---@param itemID number
 ---@return string
@@ -148,18 +150,56 @@ local function resolveSelectedInput(tabContent, summaryPrefix, recipeData, getDa
 end
 
 ---@param tabContent Frame
+---@param listAnchor Frame
+---@param anchorFrame Region
+---@param offsetY number?
+local function setListAnchorBelow(tabContent, listAnchor, anchorFrame, offsetY)
+    listAnchor:ClearAllPoints()
+    listAnchor:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 0, offsetY or -6)
+end
+
+---@param tabContent Frame
+---@param listAnchor Frame
+---@return number
+local function getListSizeYFromAnchor(tabContent, listAnchor)
+    local tabBottom = tabContent:GetBottom()
+    local anchorBottom = listAnchor:GetBottom()
+    if tabBottom and anchorBottom then
+        return math.max(80, anchorBottom - tabBottom - LIST_PAD_Y)
+    end
+    return LIST_DEFAULT_SIZE_Y
+end
+
+---@param tabContent Frame
+---@param dropList GGUI.FrameList
+---@param listAnchor Frame
+local function refreshDropListLayout(tabContent, dropList, listAnchor)
+    if not dropList or not dropList.frame or not listAnchor then
+        return
+    end
+
+    local listFrame = dropList.frame
+    listFrame:ClearAllPoints()
+    listFrame:SetPoint("TOPLEFT", listAnchor, "BOTTOMLEFT", LIST_PAD_X - 10, -6)
+    listFrame:SetPoint("BOTTOMRIGHT", tabContent, "BOTTOMRIGHT", -LIST_PAD_X, LIST_PAD_Y)
+    listFrame:SetClipsChildren(true)
+end
+
+---@param tabContent Frame
+---@param listAnchor Frame
 ---@param listName string
 ---@return GGUI.FrameList
-local function createDropList(tabContent, listName)
-    return GGUI.FrameList({
+local function createDropList(tabContent, listAnchor, listName)
+    local listSizeY = getListSizeYFromAnchor(tabContent, listAnchor)
+    local dropList = GGUI.FrameList({
         parent = tabContent,
-        anchorParent = tabContent,
-        anchorA = "BOTTOMLEFT",
-        anchorB = "BOTTOMLEFT",
-        offsetX = LIST_PAD_X,
-        offsetY = LIST_PAD_Y,
+        anchorParent = listAnchor,
+        anchorA = "TOPLEFT",
+        anchorB = "TOPLEFT",
+        offsetX = LIST_PAD_X - 10,
+        offsetY = -6,
         sizeX = LIST_SIZE_X,
-        sizeY = LIST_SIZE_Y,
+        sizeY = listSizeY,
         rowHeight = LIST_ROW_HEIGHT,
         showBorder = true,
         savedVariablesTableLayoutConfig = CraftSim.UTIL:GetFrameListLayoutConfig(listName .. "_" .. LIST_LAYOUT_VERSION),
@@ -235,6 +275,8 @@ local function createDropList(tabContent, listName)
             end
         end,
     })
+    refreshDropListLayout(tabContent, dropList, listAnchor)
+    return dropList
 end
 
 ---@param tabContent Frame
@@ -353,6 +395,11 @@ local function initSummarySection(tabContent, summaryPrefix)
         fixedWidth = TAB_CONTENT_SIZE_X - 40,
         justifyOptions = { type = "H", align = "LEFT" },
     })
+
+    local listAnchor = CreateFrame("Frame", nil, tabContent)
+    listAnchor:SetSize(1, 1)
+    listAnchor:SetPoint("TOPLEFT", tabContent[summaryPrefix .. "Note"].frame, "BOTTOMLEFT", 0, -6)
+    tabContent[summaryPrefix .. "ListAnchor"] = listAnchor
 end
 
 ---@param matchStatus string
@@ -523,13 +570,17 @@ local function updateSummary(tabContent, summaryPrefix, result, inputLabel, note
         CraftSim.UTIL:FormatMoney(result.profit, true), profitColor))
 end
 
+function CraftSim.SALVAGE_STATS.UI:SetDropListAnchor(tabContent, summaryPrefix, anchorFrame)
+    setListAnchorBelow(tabContent, tabContent[summaryPrefix .. "ListAnchor"], anchorFrame, -6)
+end
+
 function CraftSim.SALVAGE_STATS.UI:Init()
     local onClose, onMinimize, onMaximize = CraftSim.MODULES:GetModuleFrameStateCallbacks(self.module)
 
     CraftSim.SALVAGE_STATS.frame = GGUI.Frame({
         parent = ProfessionsFrame,
         sizeX = TAB_CONTENT_SIZE_X,
-        sizeY = TAB_CONTENT_SIZE_Y + 30,
+        sizeY = FRAME_SIZE_Y,
         frameID = CraftSim.CONST.FRAMES.SALVAGE_STATS,
         title = L("SALVAGE_STATS_TITLE"),
         collapseable = true,
@@ -603,6 +654,7 @@ function CraftSim.SALVAGE_STATS.UI:Init()
         })
 
         local prospectingContent = parentFrame.content.prospectingTab.content
+        prospectingContent:SetClipsChildren(true)
         initSummarySection(prospectingContent, "prospecting")
         prospectingContent.prospectingInputTitle:SetText(L("SALVAGE_STATS_INPUT_SELECT_LABEL"))
         prospectingContent.prospectingInputValue:Hide()
@@ -611,8 +663,6 @@ function CraftSim.SALVAGE_STATS.UI:Init()
             function()
                 CraftSim.SALVAGE_STATS.UI:Update(CraftSim.MODULES.recipeData)
             end)
-        prospectingContent.prospectingDropList = createDropList(
-            prospectingContent, "SALVAGE_STATS_PROSPECTING_LIST")
 
         prospectingContent.prospectingTrackButton = GGUI.Button({
             parent = prospectingContent,
@@ -674,16 +724,28 @@ function CraftSim.SALVAGE_STATS.UI:Init()
 
         prospectingContent.prospectingTrackStatus = GGUI.Text({
             parent = prospectingContent,
-            anchorParent = prospectingContent.prospectingDropList.frame,
-            anchorA = "BOTTOMLEFT",
-            anchorB = "TOPLEFT",
-            offsetY = 4,
+            anchorParent = prospectingContent.prospectingNote.frame,
+            anchorA = "TOPLEFT",
+            anchorB = "BOTTOMLEFT",
+            offsetY = -4,
             scale = 0.85,
             text = L("SALVAGE_STATS_TRACKING_IDLE"),
             justifyOptions = { type = "H", align = "LEFT" },
         })
 
+        setListAnchorBelow(
+            prospectingContent,
+            prospectingContent.prospectingListAnchor,
+            prospectingContent.prospectingTrackStatus.frame,
+            -4)
+
+        prospectingContent.prospectingDropList = createDropList(
+            prospectingContent,
+            prospectingContent.prospectingListAnchor,
+            "SALVAGE_STATS_PROSPECTING_LIST")
+
         local disenchantContent = parentFrame.content.disenchantTab.content
+        disenchantContent:SetClipsChildren(true)
         initSummarySection(disenchantContent, "disenchant")
         disenchantContent.disenchantBatchInput:SetValue(CraftSim.SALVAGE_STATS_DATA.DISENCHANT_DEFAULT_BATCH_SIZE)
 
@@ -717,11 +779,19 @@ function CraftSim.SALVAGE_STATS.UI:Init()
             disenchantContent.disenchantVariantButtons[index] = button
         end
         disenchantContent.selectedDisenchantIndex = 1
+        setListAnchorBelow(
+            disenchantContent,
+            disenchantContent.disenchantListAnchor,
+            disenchantContent.disenchantVariantButtons[#disenchantContent.disenchantVariantButtons].frame,
+            -6)
 
         disenchantContent.disenchantDropList = createDropList(
-            disenchantContent, "SALVAGE_STATS_DISENCHANT_LIST")
+            disenchantContent,
+            disenchantContent.disenchantListAnchor,
+            "SALVAGE_STATS_DISENCHANT_LIST")
 
         local millingContent = parentFrame.content.millingTab.content
+        millingContent:SetClipsChildren(true)
         initSummarySection(millingContent, "milling")
         millingContent.millingInputTitle:SetText(L("SALVAGE_STATS_INPUT_SELECT_LABEL"))
         millingContent.millingInputValue:Hide()
@@ -733,7 +803,9 @@ function CraftSim.SALVAGE_STATS.UI:Init()
                 CraftSim.SALVAGE_STATS.UI:Update(CraftSim.MODULES.recipeData)
             end)
         millingContent.millingDropList = createDropList(
-            millingContent, "SALVAGE_STATS_MILLING_LIST")
+            millingContent,
+            millingContent.millingListAnchor,
+            "SALVAGE_STATS_MILLING_LIST")
 
         GGUI.BlizzardTabSystem {
             parentFrame.content.prospectingTab,
@@ -784,6 +856,8 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
         updateDropList(prospectingContent.prospectingDropList, nil)
     end
     updateProspectingTrackingControls(prospectingContent)
+    refreshDropListLayout(prospectingContent, prospectingContent.prospectingDropList,
+        prospectingContent.prospectingListAnchor)
 
     local disenchantIndex = disenchantContent.selectedDisenchantIndex or 1
     local disenchantData = CraftSim.SALVAGE_STATS_DATA.DISENCHANT_SHUFFLE[disenchantIndex]
@@ -804,6 +878,8 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
             L("SALVAGE_STATS_DISENCHANT_NOTE"))
         updateDropList(disenchantContent.disenchantDropList, disenchantResult)
     end
+    refreshDropListLayout(disenchantContent, disenchantContent.disenchantDropList,
+        disenchantContent.disenchantListAnchor)
 
     local selectedMillingItemID, resolvedMillingData = resolveSelectedInput(
         millingContent, "milling", recipeData, function(itemID)
@@ -823,6 +899,7 @@ function CraftSim.SALVAGE_STATS.UI:Update(recipeData)
         updateSummary(millingContent, "milling", nil, nil, L("SALVAGE_STATS_MILLING_NOTE"))
         updateDropList(millingContent.millingDropList, nil)
     end
+    refreshDropListLayout(millingContent, millingContent.millingDropList, millingContent.millingListAnchor)
 end
 
 function CraftSim.SALVAGE_STATS.UI:RestoreFrameConfig()
