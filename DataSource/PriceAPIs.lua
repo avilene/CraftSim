@@ -263,6 +263,45 @@ function CraftSimTSM:IsAvailable()
     return TSM_API ~= nil
 end
 
+--- Convert an ItemMixin to a TSM item string without waiting for GetItemLink().
+--- GetItemID() is always available synchronously; GetItemLink() may still be nil
+--- while the item is loading (e.g. craft list / recipe scan queueing).
+---@param item ItemMixin
+---@return string? tsmItemString
+function CraftSimTSM:GetItemStringFromItem(item)
+    if not item then return nil end
+    local itemID = item:GetItemID()
+    if itemID then
+        return "i:" .. itemID
+    end
+    local itemLink = item:GetItemLink()
+    if not itemLink or not TSM_API or not TSM_API.ToItemString then
+        return nil
+    end
+    local ok, tsmStr = pcall(TSM_API.ToItemString, itemLink)
+    if ok then
+        return tsmStr
+    end
+    return nil
+end
+
+--- Evaluate a TSM custom price or quantity expression for an item.
+---@param expression string?
+---@param item ItemMixin
+---@return number value
+function CraftSimTSM:EvaluateExpression(expression, item)
+    if not self:IsAvailable() then return 0 end
+    local tsmStr = self:GetItemStringFromItem(item)
+    if not tsmStr or not expression or expression == "" then return 0 end
+    local ok, result = pcall(TSM_API.GetCustomPriceValue, expression, tsmStr)
+    if not ok then
+        Logger:LogError("TSM GetCustomPriceValue error for expression '" ..
+            tostring(expression) .. "' and item '" .. tostring(tsmStr) .. "': " .. tostring(result))
+        return 0
+    end
+    return result or 0
+end
+
 --- Retrieve the expected deposit cost for a recipe's result item.
 --- Returns 0 when the feature is disabled, TSM is absent, or data is unavailable.
 ---@param recipeData CraftSim.RecipeData
@@ -346,24 +385,14 @@ function CraftSimTSM:GetSmartRestockAmount(recipeData)
     local resultData = recipeData.resultData
     if not resultData or not resultData.expectedItem then return 0, 0, 0 end
 
-    local itemLink = resultData.expectedItem:GetItemLink()
-    if not itemLink then
-        local itemID = resultData.expectedItem:GetItemID()
-        if not itemID then return 0, 0, 0 end
-        itemLink = "i:" .. itemID
-    end
-
-    local tsmStr = TSM_API.ToItemString(itemLink)
-    if not tsmStr then return 0, 0, 0 end
-
-    -- Target from TSM expression
+    -- Target from TSM expression (item ID, not item link — link may still be loading)
     local restockExpr = CraftSim.DB.OPTIONS:Get("TSM_RESTOCK_KEY_ITEMS")
-    local target = TSM_API.GetCustomPriceValue(restockExpr, tsmStr) or 0
+    local target = self:EvaluateExpression(restockExpr, resultData.expectedItem)
 
     -- Owned inventory via tradable stock only (exclude soulbound bags/bank).
     local includeAlts = CraftSim.DB.OPTIONS:Get("TSM_SMART_RESTOCK_INCLUDE_ALTS")
     local itemID = resultData.expectedItem:GetItemID()
-    local owned = CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemLink or itemID, includeAlts)
+    local owned = CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemID, includeAlts)
 
     local needed = math.max(0, target - owned)
     return needed, target, owned
