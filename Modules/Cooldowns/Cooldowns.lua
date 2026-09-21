@@ -43,7 +43,7 @@ end
 
 function CraftSim.COOLDOWNS:PeriodicTimerUpdate()
     if not CraftSim.COOLDOWNS.isUpdatingTimers then return end
-    if CraftSim.COOLDOWNS.frame then
+    if not C_Secrets.ShouldCooldownsBeSecret() and CraftSim.COOLDOWNS.frame then
         CraftSim.COOLDOWNS.UI:UpdateTimers()
     end
     C_Timer.After(1, CraftSim.COOLDOWNS.PeriodicTimerUpdate)
