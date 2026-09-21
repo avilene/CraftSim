@@ -282,6 +282,10 @@ local function CountInPlayerInventory(query, includeBound)
         else
             bankCount = CountQualityBankFromTSM(query, bagCount)
         end
+    else
+        -- Non-quality items: GetItemCount still includes bank/warbank when bank bags are unread.
+        local total = C_Item.GetItemCount(query.itemID, true, false, true, true) or 0
+        return math.max(total, bagCount)
     end
 
     return bagCount + bankCount
@@ -937,6 +941,11 @@ function CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemIDOrLink, inclu
     end
 
     local includeBound = RestockShouldIncludeBoundCopies(query.itemID)
+    -- Q4/Q5 gear shares an itemID; restock of a specific quality should count equipped/bound
+    -- pieces of that quality, not only unbound copies.
+    if query.qualityID > 0 then
+        includeBound = true
+    end
     local cacheKey = BuildInventorySourceCacheKey("tradable", "CraftSim", query, includeAlts)
         .. "|bound:" .. tostring(includeBound)
     local cached, hit = GetInventorySourceCacheEntry(cacheKey, INVENTORY_SOURCE_CACHE_TTL.count)

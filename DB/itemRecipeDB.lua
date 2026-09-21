@@ -72,6 +72,23 @@ function CraftSim.DB.ITEM_RECIPE:FindItemForRecipe(recipeID)
 end
 
 ---@param recipeID RecipeID
+---@return table<QualityID, ItemID>
+---@return ItemID[]
+function CraftSim.DB.ITEM_RECIPE:GetItemIDsByRecipe(recipeID)
+    local byQuality = {}
+    local allIDs = {}
+    for itemID, data in pairs(CraftSimDB.itemRecipeDB.data or {}) do
+        if data.recipeID == recipeID and itemID and itemID > 0 then
+            if data.qualityID then
+                byQuality[data.qualityID] = itemID
+            end
+            tinsert(allIDs, itemID)
+        end
+    end
+    return byQuality, allIDs
+end
+
+---@param recipeID RecipeID
 ---@param qualityID QualityID
 ---@param itemID ItemID
 ---@param crafterUID CrafterUID
