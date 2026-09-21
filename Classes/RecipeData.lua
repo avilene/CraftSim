@@ -190,7 +190,10 @@ function CraftSim.RecipeData:new(options)
         Logger:LogDebug("Craft Order Data:")
     end
 
-    if self:IsCrafter() and not forceCache then
+    -- Live TradeSkillUI recipeInfo is only complete for the currently loaded skill line.
+    -- Queueing with the profession window closed (or a different profession open) used to
+    -- overwrite the cache with stubs, which skipped restock/quality/cooldown checks.
+    if self:IsCrafter() and not forceCache and self:IsRecipeSkillLineLoaded() then
         self.recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID) -- only partial info is returned when not the crafter, so we need to cache it
 
         -- if we are here too early for recipeInfo to be loaded, use the one from db
@@ -850,6 +853,15 @@ function CraftSim.RecipeData:SetConcentrationBySchematicForm()
     self.concentrating = currentTransaction:IsApplyingConcentration()
 end
 
+--- Refresh concentrating from the visible schematic and recompute derived profit/cost state.
+function CraftSim.RecipeData:SyncConcentrationFromSchematicForm()
+    self:SetConcentrationBySchematicForm()
+    if self.concentrating and not self.concentrationData then
+        self.concentrationData = self:GetConcentrationDataForCrafter()
+    end
+    self:Update()
+end
+
 ---@param itemID number
 function CraftSim.RecipeData:SetOptionalReagent(itemID)
     self.reagentData:SetOptionalReagent(itemID)
@@ -962,6 +974,13 @@ end
 ---@param playerSkill number
 ---@param noRounding boolean?
 function CraftSim.RecipeData:GetConcentrationCostForSkill(playerSkill, noRounding)
+    if not self.concentrationCurveData and self.baseOperationInfo then
+        self.concentrationCurveData = CraftSim.CONCENTRATION_CURVE_DATA[self.baseOperationInfo.craftingDataID]
+    end
+    if not self.concentrationCurveData then
+        return self.concentrationCost or 0
+    end
+
     -- get skill bracket and associated start and end skillCurveValues
     local recipeDifficulty = self.professionStats.recipeDifficulty.value
     playerSkill = math.min(playerSkill, recipeDifficulty) -- cap skill at max difficulty
@@ -2585,7 +2604,7 @@ function CraftSim.RecipeData:CanCraft(amount)
     local isChargeRecipe = self.cooldownData.maxCharges > 0
 
     local concentrationAmount = math.huge
-    if self.concentrating and self.concentrationCost > 0 then
+    if self.concentrating and self.concentrationCost > 0 and self.concentrationData then
         local cost = self.concentrationCost * amount
         concentrationAmount = self.concentrationData:GetQueueableAmount(cost)
     end
@@ -2618,6 +2637,23 @@ function CraftSim.RecipeData:IsProfessionOpen()
     return openProfessionID == self.professionData.professionInfo.profession
 end
 
+--- True when C_TradeSkillUI data for this recipe's skill line is currently loaded.
+--- Craft list queue often runs with the profession window closed, or with a different
+--- profession open; live GetRecipeInfo / GetRecipeQualityItemIDs / GetCraftingOperationInfo
+--- are empty or stubby in that state.
+---@return boolean
+function CraftSim.RecipeData:IsRecipeSkillLineLoaded()
+    if not C_TradeSkillUI.IsTradeSkillReady() then
+        return false
+    end
+    local currentSkillLineID = C_TradeSkillUI.GetProfessionChildSkillLineID()
+    local recipeSkillLineID = self.professionData and self.professionData.skillLineID
+    if not currentSkillLineID or currentSkillLineID == 0 or not recipeSkillLineID then
+        return false
+    end
+    return currentSkillLineID == recipeSkillLineID
+end
+
 ---@return boolean onCooldown
 function CraftSim.RecipeData:OnCooldown()
     return self.cooldownData:OnCooldown()
@@ -2630,7 +2666,8 @@ function CraftSim.RecipeData:GetCraftingOperationInfoForRecipeCrafter(forceCache
     ---@type CraftingOperationInfo
     local operationInfo = nil
     local crafterUID = self:GetCrafterUID()
-    if not self:IsCrafter() or forceCache then
+    local useCache = not self:IsCrafter() or forceCache or not self:IsRecipeSkillLineLoaded()
+    if useCache then
         operationInfo = CraftSim.DB.CRAFTER:GetOperationInfoForRecipe(crafterUID, self.recipeID)
 
         if operationInfo then
@@ -2643,8 +2680,9 @@ function CraftSim.RecipeData:GetCraftingOperationInfoForRecipeCrafter(forceCache
         operationInfo = C_TradeSkillUI.GetCraftingOperationInfo(self.recipeID, {}, self.allocationItemGUID,
             self.concentrating)
 
-
-        CraftSim.DB.CRAFTER:SaveOperationInfoForRecipe(crafterUID, self.recipeID, operationInfo)
+        if operationInfo and operationInfo.craftingDataID then
+            CraftSim.DB.CRAFTER:SaveOperationInfoForRecipe(crafterUID, self.recipeID, operationInfo)
+        end
     end
 
     return operationInfo
@@ -2654,24 +2692,26 @@ end
 function CraftSim.RecipeData:GetSpecializationDataForRecipeCrafter()
     local crafterUID = self:GetCrafterUID()
 
-    if not self:IsCrafter() then
+    if not self:IsCrafter() or not self:IsRecipeSkillLineLoaded() then
         local specializationData = CraftSim.DB.CRAFTER:GetSpecializationData(crafterUID, self)
         if specializationData then
             self.specializationDataCached = true
             return specializationData
         end
-        return CraftSim.SpecializationData(self) -- will initialize without stats and nodeinfo
-    else
-        local specializationData = CraftSim.SpecializationData(self)
-
-        -- if too early, use from db
-        if not self.isOldWorldRecipe and #specializationData.nodeData == 0 then
-            specializationData = CraftSim.DB.CRAFTER:GetSpecializationData(crafterUID, self)
-            return specializationData
-        else
-            CraftSim.DB.CRAFTER:SaveSpecializationData(crafterUID, specializationData)
-            return specializationData
+        if not self:IsCrafter() then
+            return CraftSim.SpecializationData(self) -- will initialize without stats and nodeinfo
         end
+    end
+
+    local specializationData = CraftSim.SpecializationData(self)
+
+    -- if too early, use from db
+    if not self.isOldWorldRecipe and #specializationData.nodeData == 0 then
+        specializationData = CraftSim.DB.CRAFTER:GetSpecializationData(crafterUID, self)
+        return specializationData
+    else
+        CraftSim.DB.CRAFTER:SaveSpecializationData(crafterUID, specializationData)
+        return specializationData
     end
 end
 
@@ -2680,11 +2720,9 @@ function CraftSim.RecipeData:GetCooldownDataForRecipeCrafter()
     local crafterUID = self:GetCrafterUID()
     local cooldownData
 
-    -- Prefer live C_TradeSkillUI.GetRecipeCooldown whenever this recipe belongs to the logged-in crafter.
-    -- The API is most reliable with the matching profession open, but we still call Update() first so we
-    -- do not skip it when another profession tab is visible (the old IsProfessionOpen gate left
-    -- isCooldownRecipe false with no DB row, so queue/scan logic misclassified cooldown recipes).
-    if self:IsCrafter() then
+    -- Live GetRecipeCooldown is only reliable for the currently loaded skill line.
+    -- With the profession closed it returns zeros, which used to look like "not a cooldown recipe".
+    if self:IsCrafter() and self:IsRecipeSkillLineLoaded() then
         cooldownData = CraftSim.CooldownData(self.recipeID)
         cooldownData:Update()
 
@@ -2695,6 +2733,15 @@ function CraftSim.RecipeData:GetCooldownDataForRecipeCrafter()
         end
     else
         cooldownData = CraftSim.CooldownData:DeserializeForCrafter(crafterUID, self.recipeID)
+        if self:IsCrafter() and (not cooldownData or not cooldownData.isCooldownRecipe) then
+            local live = CraftSim.CooldownData(self.recipeID)
+            live:Update()
+            if live.isCooldownRecipe then
+                cooldownData = live
+            elseif CraftSim.DB.CRAFTER:IsRecipeCooldownRecipe(crafterUID, self.recipeID) then
+                cooldownData = CraftSim.CooldownData:DeserializeForCrafter(crafterUID, self.recipeID)
+            end
+        end
     end
 
     return cooldownData
@@ -2721,7 +2768,7 @@ end
 function CraftSim.RecipeData:GetConcentrationDataForCrafter()
     local crafterUID = self:GetCrafterUID()
     local concentrationData
-    if self:IsCrafter() and self.supportsSpecializations then
+    if self:IsCrafter() and self.supportsSpecializations and self:IsRecipeSkillLineLoaded() then
         local currencyID = C_TradeSkillUI.GetConcentrationCurrencyID(self.professionData.skillLineID)
         concentrationData = CraftSim.ConcentrationData(currencyID)
         concentrationData:Update()

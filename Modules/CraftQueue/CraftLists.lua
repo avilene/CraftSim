@@ -88,33 +88,145 @@ local function RecipeMeetsSupportedQualities(recipeData, recipeEntry)
     return CraftSim.DB.CRAFT_LISTS.IsQualitySupported(GetEffectiveExpectedQuality(recipeData), supported)
 end
 
+local function IsParseableItemLink(itemLink)
+    return type(itemLink) == "string"
+        and (not issecretvalue or not issecretvalue(itemLink))
+        and GUTIL:GetItemIDByLink(itemLink) ~= nil
+end
+
+---@param item ItemMixin?
+---@param includeAltInventory boolean?
+---@return number
+local function CountOwnedResultItem(item, includeAltInventory)
+    if not item then
+        return 0
+    end
+    local itemID = item.GetItemID and item:GetItemID()
+    local itemLink = item.GetItemLink and item:GetItemLink()
+    if IsParseableItemLink(itemLink) then
+        return CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemLink, includeAltInventory) or 0
+    end
+    if not itemID then
+        return 0
+    end
+    return CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemID, includeAltInventory) or 0
+end
+
+---@param recipeEntry CraftSim.CraftListRecipeEntry?
+---@param recipeData CraftSim.RecipeData?
+local function RememberResultItemIDs(recipeEntry, recipeData)
+    if not recipeEntry then
+        return
+    end
+    recipeEntry.resultItemIDs = recipeEntry.resultItemIDs or {}
+    recipeEntry.resultItemLinks = recipeEntry.resultItemLinks or {}
+    if recipeData and recipeData.resultData then
+        for qualityID, item in pairs(recipeData.resultData.itemsByQuality or {}) do
+            local itemID = item and item.GetItemID and item:GetItemID()
+            if itemID and itemID > 0 then
+                recipeEntry.resultItemIDs[qualityID] = itemID
+            end
+            local itemLink = item and item.GetItemLink and item:GetItemLink()
+            if IsParseableItemLink(itemLink) then
+                recipeEntry.resultItemLinks[qualityID] = itemLink
+            end
+        end
+    end
+    local cached = CraftSim.DB.ITEM_RECIPE:GetItemIDsByRecipe(recipeEntry.recipeID)
+    for qualityID, itemID in pairs(cached) do
+        if not recipeEntry.resultItemIDs[qualityID] then
+            recipeEntry.resultItemIDs[qualityID] = itemID
+        end
+    end
+end
+
 ---@param recipeData CraftSim.RecipeData
 ---@param recipeEntry CraftSim.CraftListRecipeEntry?
 ---@param includeAltInventory boolean?
----@return number
+---@return number owned
+---@return boolean known true when at least one result item ID/link could be resolved
 local function GetOwnedCountForRecipeEntry(recipeData, recipeEntry, includeAltInventory)
+    RememberResultItemIDs(recipeEntry, recipeData)
+
     local supported = recipeEntry and recipeEntry.supportedQualities
-    if not recipeData.isGear
-        or not recipeData.supportsQualities
-        or not CraftSim.DB.CRAFT_LISTS.IsAnySupportedQualityChecked(supported) then
-        local expectedItem = recipeData.resultData.expectedItem
-        if not expectedItem then
-            return 0
+    local filterGearQuality = recipeData.isGear
+        and recipeData.supportsQualities
+        and CraftSim.DB.CRAFT_LISTS.IsAnySupportedQualityChecked(supported)
+
+    if filterGearQuality then
+        local owned = 0
+        local known = false
+        local function addQuality(qualityID, item, storedLink)
+            if not CraftSim.DB.CRAFT_LISTS.IsQualitySupported(qualityID, supported) then
+                return
+            end
+            local itemLink = storedLink
+            if not IsParseableItemLink(itemLink) and item and item.GetItemLink then
+                itemLink = item:GetItemLink()
+            end
+            if IsParseableItemLink(itemLink) then
+                known = true
+                owned = owned + (CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemLink, includeAltInventory) or 0)
+                return
+            end
+            if item then
+                known = true
+                owned = owned + CountOwnedResultItem(item, includeAltInventory)
+            end
         end
-        return CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(
-            expectedItem:GetItemID() or expectedItem:GetItemLink(),
-            includeAltInventory) or 0
+
+        local storedLinks = recipeEntry and recipeEntry.resultItemLinks or {}
+        local itemsByQuality = (recipeData.resultData and recipeData.resultData.itemsByQuality) or {}
+        local seen = {}
+        for qualityID, item in pairs(itemsByQuality) do
+            seen[qualityID] = true
+            addQuality(qualityID, item, storedLinks[qualityID])
+        end
+        for qualityID, itemLink in pairs(storedLinks) do
+            if not seen[qualityID] then
+                addQuality(qualityID, nil, itemLink)
+            end
+        end
+        if not known then
+            local reagentTbl = recipeData.reagentData and recipeData.reagentData.GetCraftingReagentInfoTbl
+                and recipeData.reagentData:GetCraftingReagentInfoTbl() or {}
+            local liveLinks = CraftSim.UTIL:GetDifferentQualitiesByCraftingReagentTbl(
+                recipeData.recipeID, reagentTbl, recipeData.allocationItemGUID, recipeData.maxQuality)
+            for qualityID, itemLink in ipairs(liveLinks or {}) do
+                addQuality(qualityID, nil, itemLink)
+            end
+        end
+        return owned, known
     end
 
     local owned = 0
-    for qualityID, item in pairs(recipeData.resultData.itemsByQuality) do
-        if CraftSim.DB.CRAFT_LISTS.IsQualitySupported(qualityID, supported) and item then
-            owned = owned + (CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(
-                item:GetItemID() or item:GetItemLink(),
-                includeAltInventory) or 0)
+    local seen = {}
+    local function addItemID(itemID)
+        if not itemID or itemID <= 0 or seen[itemID] then
+            return
+        end
+        seen[itemID] = true
+        owned = owned + (CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemID, includeAltInventory) or 0)
+    end
+
+    for _, item in pairs((recipeData.resultData and recipeData.resultData.itemsByQuality) or {}) do
+        addItemID(item and item.GetItemID and item:GetItemID())
+    end
+    addItemID(recipeData.resultData and recipeData.resultData.expectedItem and recipeData.resultData.expectedItem:GetItemID())
+    addItemID(recipeData.recipeInfo and GUTIL:GetItemIDByLink(recipeData.recipeInfo.hyperlink))
+
+    if recipeEntry and recipeEntry.resultItemIDs then
+        for _, itemID in pairs(recipeEntry.resultItemIDs) do
+            addItemID(itemID)
         end
     end
-    return owned
+
+    local _, cachedIDs = CraftSim.DB.ITEM_RECIPE:GetItemIDsByRecipe(recipeData.recipeID)
+    for _, itemID in ipairs(cachedIDs or {}) do
+        addItemID(itemID)
+    end
+
+    return owned, next(seen) ~= nil
 end
 
 ---@param recipeEntry CraftSim.CraftListRecipeEntry?
@@ -234,6 +346,9 @@ end
 ---@return number queueableAmount
 local function getConcentrationQueueableAmount(rd, entry, currentConcentration)
     local concentrationCost = rd.concentrationCost
+    if not concentrationCost or concentrationCost <= 0 then
+        return entry.maxQueueAmount or 0
+    end
     if entry.options.offsetConcentrationCraftAmount then
         local ingenuityChance = rd.professionStats.ingenuity:GetPercent(true)
         local ingenuityRefund = 0.5 + rd.professionStats.ingenuity:GetExtraValue()
@@ -753,9 +868,8 @@ function CraftSim.CRAFT_LISTS:ScanList(list, crafterUID, allScanEntries, finally
         local queueAmount
         local recipeMaxQueueAmount
 
-        if not recipeData.resultData or not recipeData.resultData.expectedItem then
-            return nil
-        end
+        local restockConfigured = (TSM_API and options.useTSMRestockExpression)
+            or (recipeEntry and recipeEntry.restockMaxAmount and recipeEntry.restockMaxAmount > 0)
 
         -- set maximum queue amount by cooldown charges if available
         if recipeData.cooldownData.isCooldownRecipe then
@@ -764,23 +878,28 @@ function CraftSim.CRAFT_LISTS:ScanList(list, crafterUID, allScanEntries, finally
         end
 
         -- if no other max is set, the max we want to queue is the cd charges or if no cd the offsetamount if its greater than 0, otherwise just queue 1
-        if not options.useTSMRestockExpression and not (recipeEntry and recipeEntry.restockMaxAmount and recipeEntry.restockMaxAmount > 0) then
+        if not restockConfigured then
             return recipeMaxQueueAmount
         end
 
         -- adapt by TSM restock expression if enabled and available, otherwise use restockmaxamount if set
         if TSM_API and options.useTSMRestockExpression then
-            local itemLink = recipeData.resultData.expectedItem:GetItemLink()
-            if itemLink then
-                local tsmItemString = TSM_API.ToItemString(itemLink)
-                if tsmItemString then
-                    local tsmAmount = TSM_API.GetCustomPriceValue(
-                        options.tsmRestockExpression or "1",
-                        tsmItemString) or 0
-                    local maxTSMAmount = tsmAmount + offsetAmount
-                    recipeMaxQueueAmount = recipeMaxQueueAmount and math.min(recipeMaxQueueAmount, maxTSMAmount) or
-                        maxTSMAmount
+            local expectedItem = recipeData.resultData and recipeData.resultData.expectedItem
+            local itemLink = expectedItem and expectedItem.GetItemLink and expectedItem:GetItemLink()
+            local tsmItemString = itemLink and TSM_API.ToItemString(itemLink)
+            if not tsmItemString and expectedItem and expectedItem.GetItemID then
+                local itemID = expectedItem:GetItemID()
+                if itemID then
+                    tsmItemString = "i:" .. tostring(itemID)
                 end
+            end
+            if tsmItemString then
+                local tsmAmount = TSM_API.GetCustomPriceValue(
+                    options.tsmRestockExpression or "1",
+                    tsmItemString) or 0
+                local maxTSMAmount = tsmAmount + offsetAmount
+                recipeMaxQueueAmount = recipeMaxQueueAmount and math.min(recipeMaxQueueAmount, maxTSMAmount) or
+                    maxTSMAmount
             end
         elseif recipeEntry and recipeEntry.restockMaxAmount and recipeEntry.restockMaxAmount > 0 then
             local maxRestockAmount = recipeEntry.restockMaxAmount + offsetAmount
@@ -792,7 +911,16 @@ function CraftSim.CRAFT_LISTS:ScanList(list, crafterUID, allScanEntries, finally
             return nil
         end
 
-        local owned = GetOwnedCountForRecipeEntry(recipeData, recipeEntry, options.includeAltInventory)
+        local owned, known = GetOwnedCountForRecipeEntry(recipeData, recipeEntry, options.includeAltInventory)
+        Logger:LogDebug("Restock owned count for {name}: owned={owned} known={known} target={target} subtractInventory={subtract}",
+            recipeData.recipeName, owned, known, recipeMaxQueueAmount, options.subtractInventory)
+
+        -- Profession window closed: if we cannot resolve result item IDs, skip rather than
+        -- treating stock as 0 and queueing a full restock.
+        if not known then
+            Logger:LogDebug("Skipping restock, result item IDs unknown: " .. tostring(recipeData.recipeName))
+            return 0
+        end
 
         -- Already at or above restock target: skip queuing this recipe.
         if owned >= recipeMaxQueueAmount then
@@ -954,6 +1082,8 @@ function CraftSim.CRAFT_LISTS:ScanList(list, crafterUID, allScanEntries, finally
                     frameDistributor:Break()
                     return
                 end
+
+                RememberResultItemIDs(recipeEntry, recipeData)
 
                 -- Apply onlyProfitable against the WITH-SBF version (best-case scenario).
                 -- If SBF turns out to be unavailable, the effective (no-SBF) profit is checked

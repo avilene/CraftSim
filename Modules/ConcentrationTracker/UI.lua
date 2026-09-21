@@ -259,7 +259,8 @@ function CraftSim.CONCENTRATION_TRACKER.UI:CollectTrackerRowData(crafterUIDFilte
 
         for profession, serializedData in pairs(CraftSim.DB.CRAFTER:GetConcentrationDataListForExpansion(crafterUID,
             openExpansionID)) do
-            if not tContains(crafterBlacklist, profession) and serializedData then
+            if CraftSim.CONCENTRATION_TRACKER:ShouldShowProfession(profession)
+                and not tContains(crafterBlacklist, profession) and serializedData then
                 tinsert(trackerRows, {
                     crafterUID = crafterUID,
                     profession = profession,
@@ -308,6 +309,9 @@ function CraftSim.CONCENTRATION_TRACKER.UI:CollectCurrentPlayerMinimizedRowData(
     local professionsToShow = {}
 
     local function markProfession(profession, serializedData)
+        if not CraftSim.CONCENTRATION_TRACKER:ShouldShowProfession(profession) then
+            return
+        end
         professionsToShow[profession] = true
         if serializedData then
             professionDataByProfession[profession] = serializedData
@@ -891,7 +895,7 @@ function CraftSim.CONCENTRATION_TRACKER.UI:UpdateMinimizedDisplay()
 end
 
 function CraftSim.CONCENTRATION_TRACKER.UI:VisibleByContext()
-    if not CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID) then
+    if not self.module or not CraftSim.DB.OPTIONS:IsModuleEnabled(self.module.moduleID) then
         return false
     end
 
@@ -907,7 +911,9 @@ function CraftSim.CONCENTRATION_TRACKER.UI:VisibleByContext()
         return false
     end
 
-    return CraftSim.CONCENTRATION_TRACKER:GetCurrentConcentrationData() ~= nil
+    -- Cooking (and gathering) have no concentration, but the tracker still lists
+    -- other professions for this expansion.
+    return true
 end
 
 function CraftSim.CONCENTRATION_TRACKER.UI:UpdateTrackerDisplay()
@@ -988,15 +994,22 @@ function CraftSim.CONCENTRATION_TRACKER.UI:Update()
     local content = CraftSim.CONCENTRATION_TRACKER.frame and
         CraftSim.CONCENTRATION_TRACKER.frame.content --[[@as CraftSim.CONCENTRATION_TRACKER.FRAME.CONTENT?]]
 
-    if concentrationData and concentrationData.currencyID and content then
-        local currentConcentration = concentrationData:GetSpendableAmount()
-        content.value:SetText(currentConcentration)
-        content.maxValue:SetText(concentrationData.maxQuantity)
+    if content then
+        if concentrationData and concentrationData.currencyID then
+            local currentConcentration = concentrationData:GetSpendableAmount()
+            content.value:SetText(currentConcentration)
+            content.maxValue:SetText(concentrationData.maxQuantity)
 
-        if currentConcentration >= concentrationData.maxQuantity then
-            content.maxTimer:SetText(CraftSim.LOCAL:GetText("CONCENTRATION_TRACKER_FULL"))
+            if currentConcentration >= concentrationData.maxQuantity then
+                content.maxTimer:SetText(CraftSim.LOCAL:GetText("CONCENTRATION_TRACKER_FULL"))
+            else
+                content.maxTimer:SetText(CraftSim.CONCENTRATION_TRACKER:GetMaxFormatByFormatMode(concentrationData))
+            end
         else
-            content.maxTimer:SetText(CraftSim.CONCENTRATION_TRACKER:GetMaxFormatByFormatMode(concentrationData))
+            local noConcentrationText = L("CONCENTRATION_TRACKER_LIST_ROW_MOXIE_UNKNOWN")
+            content.value:SetText(noConcentrationText)
+            content.maxValue:SetText(noConcentrationText)
+            content.maxTimer:SetText("")
         end
 
         local isPinned = CraftSim.DB.OPTIONS:Get("CONCENTRATION_TRACKER_PINNED")

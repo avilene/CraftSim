@@ -39,6 +39,22 @@ function CraftSim.ResultData:UpdatePossibleResultItems()
     self.itemsByQuality = {}
     local craftingReagentInfoTbl = recipeData.reagentData:GetCraftingReagentInfoTbl()
 
+    local function appendItemIDs(itemIDs)
+        for _, itemID in pairs(itemIDs or {}) do
+            if itemID and itemID > 0 then
+                table.insert(self.itemsByQuality, Item:CreateFromItemID(itemID))
+            end
+        end
+    end
+
+    local function hasResultItems()
+        for _, item in pairs(self.itemsByQuality) do
+            if item then
+                return true
+            end
+        end
+        return false
+    end
 
     if recipeData.isEnchantingRecipe and recipeData.baseOperationInfo then
         local craftingDataID = self.recipeData.baseOperationInfo.craftingDataID
@@ -57,24 +73,48 @@ function CraftSim.ResultData:UpdatePossibleResultItems()
             craftingReagentInfoTbl, recipeData.allocationItemGUID, recipeData.maxQuality)
 
         for _, itemLink in pairs(itemLinks) do
-            table.insert(self.itemsByQuality, Item:CreateFromItemLink(itemLink))
+            if itemLink then
+                table.insert(self.itemsByQuality, Item:CreateFromItemLink(itemLink))
+            end
         end
     elseif recipeData.supportsQualities and not recipeData.isSalvageRecipe and not recipeData.recipeInfo.isGatheringRecipe then
         Logger:LogDebug("fetching quality ids itemids:", false, true)
         local itemIDs = C_TradeSkillUI.GetRecipeQualityItemIDs(recipeData.recipeID)
-        for _, itemID in pairs(itemIDs or {}) do
-            Logger:LogDebug("itemID: " .. itemID)
-            table.insert(self.itemsByQuality, Item:CreateFromItemID(itemID))
+        appendItemIDs(itemIDs)
+        -- GetRecipeQualityItemIDs is empty when that profession is not the loaded skill line.
+        if not hasResultItems() then
+            itemIDs = CraftSim.UTIL:GetDifferentQualityIDsByCraftingReagentTbl(recipeData.recipeID,
+                craftingReagentInfoTbl, recipeData.allocationItemGUID)
+            appendItemIDs(itemIDs)
         end
     else
         Logger:LogDebug("fetching quality ids itemids:", false, true)
         local itemIDs = CraftSim.UTIL:GetDifferentQualityIDsByCraftingReagentTbl(recipeData.recipeID,
             craftingReagentInfoTbl, recipeData.allocationItemGUID)
-        for _, itemID in pairs(itemIDs) do
-            Logger:LogDebug("itemID: " .. itemID)
-            table.insert(self.itemsByQuality, Item:CreateFromItemID(itemID))
-        end
+        appendItemIDs(itemIDs)
     end
+
+        if not hasResultItems() then
+            local cached = CraftSim.DB.ITEM_RECIPE:GetItemIDsByRecipe(recipeData.recipeID)
+            for qualityID = 1, (recipeData.maxQuality or 5) do
+                if cached[qualityID] then
+                    self.itemsByQuality[qualityID] = Item:CreateFromItemID(cached[qualityID])
+                end
+            end
+        end
+        if not hasResultItems() then
+            local hyperlink = recipeData.recipeInfo and recipeData.recipeInfo.hyperlink
+            local hyperlinkItemID = hyperlink and CraftSim.GUTIL:GetItemIDByLink(hyperlink)
+            if hyperlinkItemID and hyperlinkItemID > 0 then
+                table.insert(self.itemsByQuality, Item:CreateFromItemID(hyperlinkItemID))
+            end
+        end
+        if not hasResultItems() then
+            local outputItemID = recipeData.recipeSchematic and recipeData.recipeSchematic.outputItemID
+            if outputItemID and outputItemID > 0 then
+                table.insert(self.itemsByQuality, Item:CreateFromItemID(outputItemID))
+            end
+        end
 
     if self.itemsByQuality[1] and self.itemsByQuality[2] and not recipeData.supportsQualities then
         if self.itemsByQuality[1]:GetItemID() == self.itemsByQuality[2]:GetItemID() then

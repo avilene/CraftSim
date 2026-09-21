@@ -444,7 +444,9 @@ function CraftSim.UTIL:GetDifferentQualityIDsByCraftingReagentTbl(recipeID, craf
     for i = 1, 3, 1 do
         local outputItemData = C_TradeSkillUI.GetRecipeOutputItemData(recipeID, craftingReagentInfoTbl,
             allocationItemGUID, i)
-        table.insert(qualityIDs, outputItemData.itemID)
+        if outputItemData and outputItemData.itemID then
+            table.insert(qualityIDs, outputItemData.itemID)
+        end
     end
     return qualityIDs
 end
@@ -497,7 +499,9 @@ function CraftSim.UTIL:GetDifferentQualitiesByCraftingReagentTbl(recipeID, craft
     for i = 4, max, 1 do
         local outputItemData = C_TradeSkillUI.GetRecipeOutputItemData(recipeID, craftingReagentInfoTbl, -- seems to also work if character does not have the profession!
             allocationItemGUID, i)
-        table.insert(linksByQuality, outputItemData.hyperlink)
+        if outputItemData and outputItemData.hyperlink then
+            table.insert(linksByQuality, outputItemData.hyperlink)
+        end
     end
     return linksByQuality
 end
@@ -733,6 +737,23 @@ function CraftSim.UTIL:IsProfessionLearned(profession)
     end
 
     return false
+end
+
+--- The two primary profession slots (excludes archaeology, fishing, and cooking).
+---@return Enum.Profession[]
+function CraftSim.UTIL:GetPlayerMainProfessions()
+    local prof1, prof2 = GetProfessions()
+    local professions = {}
+    for _, professionIndex in ipairs({ prof1, prof2 }) do
+        if professionIndex then
+            local skillLineID = select(7, GetProfessionInfo(professionIndex))
+            local profession = skillLineID and CraftSim.UTIL:GetProfessionBySkillLineID(skillLineID)
+            if profession then
+                tinsert(professions, profession)
+            end
+        end
+    end
+    return professions
 end
 
 ---@param itemLink string

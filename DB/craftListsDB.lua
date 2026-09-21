@@ -40,6 +40,8 @@ CraftSim.DB = CraftSim.DB
 ---@field recipeID RecipeID
 ---@field restockMaxAmount number target stock when > 0 (restock); 0 = use normal queue amount (TSM / 1 + offset)
 ---@field supportedQualities table<number, boolean>? gear output qualities to restock/queue; none checked = all qualities
+---@field resultItemIDs table<number, ItemID>? quality index -> output itemID, cached so restock works with the profession closed
+---@field resultItemLinks table<number, string>? quality index -> item link (Q4/Q5 gear shares itemID; quality lives on the link)
 
 ---@class CraftSim.DB.CRAFT_LISTS : CraftSim.DB.Repository
 CraftSim.DB.CRAFT_LISTS = CraftSim.DB:RegisterRepository("CraftListsDB")
@@ -132,6 +134,8 @@ local function CreateDefaultRecipeEntry(recipeID)
         recipeID = recipeID,
         restockMaxAmount = 0,
         supportedQualities = {},
+        resultItemIDs = {},
+        resultItemLinks = {},
     }
 end
 
@@ -155,6 +159,8 @@ local function NormalizeListRecipes(list)
     for _, entry in ipairs(list.recipeEntries) do
         entry.restockMaxAmount = math.max(0, tonumber(entry.restockMaxAmount) or 0)
         entry.supportedQualities = NormalizeSupportedQualities(entry.supportedQualities)
+        entry.resultItemIDs = entry.resultItemIDs or {}
+        entry.resultItemLinks = entry.resultItemLinks or {}
         if not tContains(normalizedRecipeIDs, entry.recipeID) then
             tinsert(normalizedRecipeIDs, entry.recipeID)
         end
@@ -304,7 +310,12 @@ function CraftSim.DB.CRAFT_LISTS:AddRecipe(id, crafterUID, recipeID)
     local list = self:GetList(id, crafterUID)
     if not list then return end
     if not GUTIL:Find(list.recipeEntries, function(entry) return entry.recipeID == recipeID end) then
-        tinsert(list.recipeEntries, CreateDefaultRecipeEntry(recipeID))
+        local entry = CreateDefaultRecipeEntry(recipeID)
+        local cached = CraftSim.DB.ITEM_RECIPE:GetItemIDsByRecipe(recipeID)
+        for qualityID, itemID in pairs(cached) do
+            entry.resultItemIDs[qualityID] = itemID
+        end
+        tinsert(list.recipeEntries, entry)
         tinsert(list.recipeIDs, recipeID)
     end
 end

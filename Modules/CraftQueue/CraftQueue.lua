@@ -841,6 +841,23 @@ function CraftSim.CRAFTQ:GetProfitWithOwnedMaterials(recipeData, craftAmount, op
     return baseProfit + profitIncrease, costReduction
 end
 
+---@param profession Enum.Profession?
+---@param crafterUID CrafterUID?
+---@return number maxCostCopper gold willing to pay per knowledge point
+function CraftSim.CRAFTQ:GetPatronOrderKnowledgeMaxCost(profession, crafterUID)
+    crafterUID = crafterUID or CraftSim.UTIL:GetPlayerCrafterUID()
+    local characterOverrideEnabled = CraftSim.DB.OPTIONS:Get(
+        "CRAFTQUEUE_QUEUE_PATRON_ORDERS_KP_COST_CHARACTER_OVERRIDE")
+    if crafterUID and characterOverrideEnabled[crafterUID] and profession then
+        local byProfession = CraftSim.DB.OPTIONS:Get("CRAFTQUEUE_QUEUE_PATRON_ORDERS_KP_COST_BY_PROFESSION")
+        local professionCost = byProfession[profession]
+        if professionCost ~= nil then
+            return professionCost
+        end
+    end
+    return CraftSim.DB.OPTIONS:Get("CRAFTQUEUE_QUEUE_PATRON_ORDERS_KP_MAX_COST")
+end
+
 function CraftSim.CRAFTQ:QueueWorkOrders()
     CraftSim.CRAFTQ.queuingWorkOrders = true
     Logger:LogDebug("QueueWorkOrders", false, true)
@@ -867,7 +884,7 @@ function CraftSim.CRAFTQ:QueueWorkOrders()
     end)
 
     local maxPatronOrderCost = CraftSim.DB.OPTIONS:Get("CRAFTQUEUE_QUEUE_PATRON_ORDERS_MAX_COST")
-    local maxKPCost = CraftSim.DB.OPTIONS:Get("CRAFTQUEUE_QUEUE_PATRON_ORDERS_KP_MAX_COST")
+    local maxKPCost = self:GetPatronOrderKnowledgeMaxCost(profession)
     local maxPatronDurationHours = CraftSim.DB.OPTIONS:Get("CRAFTQUEUE_QUEUE_PATRON_ORDERS_MAX_DURATION_HOURS")
 
     local workOrderTypes = self:GetEnabledWorkOrderTypes()
@@ -1696,12 +1713,20 @@ function CraftSim.CRAFTQ:QueueOpenRecipe()
             recipeData = CraftSim.SIMULATION_MODE.recipeData:Copy() -- need a copy or changes in simulation mode just overwrite it
         end
     else
-        if CraftSim.MODULES.recipeData then
+        -- Prefer the visible schematic so a stale cached recipe (e.g. previous profession) is not queued.
+        recipeData = CraftSim.MODULES:GetRecipeDataFromVisibleRecipe()
+        if not recipeData and CraftSim.MODULES.recipeData then
             recipeData = CraftSim.MODULES.recipeData:Copy()
+        end
+
+        if recipeData then
+            recipeData:SyncConcentrationFromSchematicForm()
         end
     end
 
     if not recipeData then
+        CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") ..
+            f.r("Could not add to CraftQueue: no recipe data could be resolved."))
         return
     end
 

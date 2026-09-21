@@ -204,6 +204,13 @@ function CraftSim.CONCENTRATION_TRACKER:ScheduleNextReplenishRefresh()
     end)
 end
 
+--- Cooking never uses concentration (and has no moxie). Gathering is listed for moxie only.
+---@param profession Enum.Profession?
+---@return boolean
+function CraftSim.CONCENTRATION_TRACKER:ShouldShowProfession(profession)
+    return profession ~= nil and profession ~= Enum.Profession.Cooking
+end
+
 ---@return CraftSim.ConcentrationData?
 function CraftSim.CONCENTRATION_TRACKER:GetCurrentConcentrationData()
     local skillLineID = C_TradeSkillUI.GetProfessionChildSkillLineID()
@@ -217,6 +224,12 @@ function CraftSim.CONCENTRATION_TRACKER:GetCurrentConcentrationData()
     -- if not shown profession's expac dont show
     if not expansionID or expansionID < CraftSim.CONST.EXPANSION_IDS.DRAGONFLIGHT then return end
 
+    -- Cooking and gathering have no concentration currency. The API still returns 0,
+    -- which is truthy in Lua and previously saved a fake cooking row in the tracker.
+    if not self:ShouldShowProfession(profession) or CraftSim.CONST.GATHERING_PROFESSIONS[profession] then
+        return
+    end
+
     local currencyID = C_TradeSkillUI.GetConcentrationCurrencyID(skillLineID)
 
     local cached = CraftSim.CONCENTRATION_TRACKER.ConcentrationDataCache[skillLineID]
@@ -224,7 +237,7 @@ function CraftSim.CONCENTRATION_TRACKER:GetCurrentConcentrationData()
         CraftSim.CONCENTRATION_TRACKER.ConcentrationDataCache[skillLineID] = nil
         cached = nil
     end
-    if cached and cached.currencyID then
+    if cached and cached.currencyID and cached.currencyID > 0 then
         cached:Update()
 
         -- update the saved db data always
@@ -239,8 +252,7 @@ function CraftSim.CONCENTRATION_TRACKER:GetCurrentConcentrationData()
     -- Use concentration currency from the trade skill API. Do not require
     -- C_ProfSpecs.SkillLineHasSpecialization: Midnight (and some builds) can expose
     -- concentration while that call is false, which left the compact display at 0/0.
-    local isGathering = profession and CraftSim.CONST.GATHERING_PROFESSIONS[profession]
-    if currencyID and skillLineID > 0 and not isGathering then
+    if currencyID and currencyID > 0 and skillLineID > 0 then
         local concentrationData = CraftSim.ConcentrationData(currencyID)
         concentrationData:Update()
         -- save in crafterDB
