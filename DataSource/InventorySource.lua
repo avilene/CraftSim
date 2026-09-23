@@ -132,30 +132,159 @@ local function ItemLocationMatchesInventoryQuery(itemLoc, query)
     return true
 end
 
---- Count unbound item stacks in the current character's bags, bank, and warband bank.
+--- True when restock should count bound copies (BoP / warbound / quest bind).
+--- BoE/BoU items that have already bound stay excluded so equipped gear is not
+--- treated as sellable/tradable stock.
+---@param itemID number
+---@return boolean
+local function RestockShouldIncludeBoundCopies(itemID)
+    local bindType = select(14, C_Item.GetItemInfo(itemID))
+    if bindType == nil or IsSecretValue(bindType) then
+        -- Item info not loaded yet: count bound copies so BoP restock (treatises)
+        -- is not treated as zero owned.
+        return true
+    end
+    if bindType == Enum.ItemBind.OnEquip
+        or bindType == Enum.ItemBind.OnUse
+        or bindType == Enum.ItemBind.None then
+        return false
+    end
+    return true
+end
+
+---@return boolean
+local function AreCharacterBankTabsReadable()
+    local tab = Enum.BagIndex.CharacterBankTab_1
+    return tab ~= nil and (C_Container.GetContainerNumSlots(tab) or 0) > 0
+end
+
+---@param query CraftSim.InventoryQueryInput
+---@param includeBound boolean
+---@param firstBag number
+---@param lastBag number
+---@return number
+local function CountInBagRange(query, includeBound, firstBag, lastBag)
+    local count = 0
+    for bag = firstBag, lastBag do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) do
+            local itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
+            if itemLoc:IsValid()
+                and (includeBound or not C_Item.IsBound(itemLoc))
+                and ItemLocationMatchesInventoryQuery(itemLoc, query) then
+                count = count + (C_Item.GetStackCount(itemLoc) or 1)
+            end
+        end
+    end
+    return count
+end
+
+--- Quality-aware bank+warbank count from Syndicator's cache (readable while the bank UI is closed).
 ---@param query CraftSim.InventoryQueryInput
 ---@return number
-local function CountUnboundInPlayerInventory(query)
-    local count = 0
-    local bagRanges = {
-        { Enum.BagIndex.Backpack, Enum.BagIndex.Bag_4 },
-        { Enum.BagIndex.CharacterBankTab_1, Enum.BagIndex.CharacterBankTab_6 },
-        { Enum.BagIndex.AccountBankTab_1, Enum.BagIndex.AccountBankTab_5 },
-    }
+local function CountQualityInCachedBanks(query)
+    if query.qualityID <= 0 then
+        return 0
+    end
+    if not (CraftSimSYNDICATOR and CraftSimSYNDICATOR.IsAvailable and CraftSimSYNDICATOR:IsAvailable()) then
+        return 0
+    end
 
-    for _, range in ipairs(bagRanges) do
-        for bag = range[1], range[2] do
-            for slot = 1, C_Container.GetContainerNumSlots(bag) do
-                local itemLoc = ItemLocation:CreateFromBagAndSlot(bag, slot)
-                if itemLoc:IsValid() and not C_Item.IsBound(itemLoc)
-                    and ItemLocationMatchesInventoryQuery(itemLoc, query) then
-                    count = count + (C_Item.GetStackCount(itemLoc) or 1)
+    local syndicatorData = SYNDICATOR_DATA
+    if not syndicatorData then
+        return 0
+    end
+
+    local playerCrafterUID = CraftSim.UTIL:GetPlayerCrafterUID()
+    local count = 0
+
+    local function addIfMatch(invItem)
+        if invItem and invItem.itemID == query.itemID and invItem.itemLink
+            and (GUTIL:GetQualityIDFromLink(invItem.itemLink) or 0) == query.qualityID then
+            count = count + (invItem.itemCount or 1)
+        end
+    end
+
+    for crafterUID, data in pairs(syndicatorData.Characters or {}) do
+        if crafterUID == playerCrafterUID then
+            for _, invInfo in ipairs(data.bankTabs or {}) do
+                for _, invItem in pairs(invInfo.slots or {}) do
+                    addIfMatch(invItem)
                 end
             end
         end
     end
 
+    for _, warbandInfo in ipairs(syndicatorData.Warband or {}) do
+        for _, invInfo in ipairs(warbandInfo.bank or {}) do
+            for _, invItem in pairs(invInfo.slots or {}) do
+                addIfMatch(invItem)
+            end
+        end
+    end
+
     return count
+end
+
+---@param query CraftSim.InventoryQueryInput
+---@param alreadyCountedBags number
+---@return number
+local function CountQualityBankFromTSM(query, alreadyCountedBags)
+    if query.qualityID <= 0 or type(query.itemIDOrLink) ~= "string" then
+        return 0
+    end
+    if not (TSM_API and TSM_API.ToItemString and TSM_API.GetPlayerTotals) then
+        return 0
+    end
+
+    local tsmStr = TSM_API.ToItemString(query.itemIDOrLink)
+    if not tsmStr or IsSecretValue(tsmStr) then
+        return 0
+    end
+
+    local ok, numPlayer = pcall(TSM_API.GetPlayerTotals, tsmStr)
+    if not ok then
+        return 0
+    end
+    local warbank = 0
+    if TSM_API.GetWarbankQuantity then
+        local warbankOk, quantity = pcall(TSM_API.GetWarbankQuantity, tsmStr)
+        if warbankOk then
+            warbank = quantity or 0
+        end
+    end
+
+    return math.max(0, (numPlayer or 0) + warbank - (alreadyCountedBags or 0))
+end
+
+--- Count item stacks in bags, reagent bag, bank, and warband bank.
+---@param query CraftSim.InventoryQueryInput
+---@param includeBound boolean if false, skip bound stacks (BoE that has been equipped, etc.)
+---@return number
+local function CountInPlayerInventory(query, includeBound)
+    if includeBound and query.qualityID == 0 then
+        -- GetItemCount includes bound items, reagent bag, bank, and warbank.
+        return C_Item.GetItemCount(query.itemID, true, false, true, true) or 0
+    end
+
+    local lastBag = Enum.BagIndex.ReagentBag or Enum.BagIndex.Bag_4
+    local bagCount = CountInBagRange(query, includeBound, Enum.BagIndex.Backpack, lastBag)
+    local bankCount = 0
+
+    if AreCharacterBankTabsReadable() then
+        bankCount = CountInBagRange(query, includeBound, Enum.BagIndex.CharacterBankTab_1,
+            Enum.BagIndex.CharacterBankTab_6)
+        bankCount = bankCount + CountInBagRange(query, includeBound, Enum.BagIndex.AccountBankTab_1,
+            Enum.BagIndex.AccountBankTab_5)
+    elseif query.qualityID > 0 then
+        -- Bank containers are empty while the bank UI is closed. Use cached quality counts.
+        if CraftSimSYNDICATOR and CraftSimSYNDICATOR.IsAvailable and CraftSimSYNDICATOR:IsAvailable() then
+            bankCount = CountQualityInCachedBanks(query)
+        else
+            bankCount = CountQualityBankFromTSM(query, bagCount)
+        end
+    end
+
+    return bagCount + bankCount
 end
 
 function CraftSim.INVENTORY_API:InitInventorySource()
@@ -733,7 +862,7 @@ end
 ---@return number count
 function CraftSimINVENTORY_NONE:GetInventoryCount(itemID)
     if not itemID then return 0 end
-    return C_Item.GetItemCount(itemID, true, false, true) or 0
+    return C_Item.GetItemCount(itemID, true, false, true, true) or 0
 end
 
 --- Returns AH post amount if TSM is also loaded (for backwards compat).
@@ -748,7 +877,7 @@ end
 ---@return {label: string, count: number}[] lines
 function CraftSimINVENTORY_NONE:GetInventoryBreakdownLines(itemID)
     if not itemID then return {} end
-    local count = C_Item.GetItemCount(itemID, true, false, true) or 0
+    local count = C_Item.GetItemCount(itemID, true, false, true, true) or 0
     return { { label = "Current character", count = count } }
 end
 
@@ -789,10 +918,13 @@ function CraftSim.INVENTORY_SOURCE:GetInventoryCount(itemIDOrLink, includeAlts)
     return count
 end
 
---- Returns inventory that counts toward restock targets: unbound bags/bank on the current
---- character plus AH listings. Soulbound items in bags/bank are excluded.
+--- Returns inventory that counts toward restock targets: bags, reagent bag, bank,
+--- and warbank on the current character, plus AH listings.
+--- Bound copies of tradable (BoE/BoU) items are excluded. Bound copies of items
+--- that are inherently untradeable (BoP, warbound, quest bind) — such as
+--- profession treatises — are included, because they are the stock being restocked.
 ---@param itemIDOrLink ItemID | string
----@param includeAlts boolean? if true, include alt characters' tradable inventory and AH
+---@param includeAlts boolean? if true, include alt characters' inventory and AH
 ---@return number count
 function CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemIDOrLink, includeAlts)
     if not itemIDOrLink then
@@ -804,13 +936,15 @@ function CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemIDOrLink, inclu
         return 0
     end
 
+    local includeBound = RestockShouldIncludeBoundCopies(query.itemID)
     local cacheKey = BuildInventorySourceCacheKey("tradable", "CraftSim", query, includeAlts)
+        .. "|bound:" .. tostring(includeBound)
     local cached, hit = GetInventorySourceCacheEntry(cacheKey, INVENTORY_SOURCE_CACHE_TTL.count)
     if hit then
         return cached or 0
     end
 
-    local count = CountUnboundInPlayerInventory(query)
+    local count = CountInPlayerInventory(query, includeBound)
 
     if CraftSimTSM and CraftSimTSM.IsAvailable and CraftSimTSM:IsAvailable() then
         local tsmStr = ToTSMItemString(query.itemID)
@@ -818,16 +952,18 @@ function CraftSim.INVENTORY_SOURCE:GetTradableInventoryCount(itemIDOrLink, inclu
         count = count + (numAuctions or 0)
         if includeAlts then
             count = count + (numAltAuctions or 0)
-            if not GUTIL:isItemSoulbound(query.itemID) then
+            if includeBound or not GUTIL:isItemSoulbound(query.itemID) then
                 count = count + (numAlts or 0)
             end
         end
-    elseif includeAlts and not GUTIL:isItemSoulbound(query.itemID) then
+    elseif includeAlts and (includeBound or not GUTIL:isItemSoulbound(query.itemID)) then
         local total = self:GetInventoryCount(itemIDOrLink, true)
         local playerTotal = self:GetInventoryCount(itemIDOrLink, false)
         count = count + math.max(0, total - playerTotal)
     end
 
+    Logger:LogDebug("GetTradableInventoryCount itemID={itemID} includeBound={includeBound} count={count}",
+        query.itemID, includeBound, count)
     SetInventorySourceCacheEntry(cacheKey, count)
     return count
 end
