@@ -5,23 +5,26 @@ local GUTIL = CraftSim.GUTIL
 local L = CraftSim.LOCAL:GetLocalizer()
 
 ---@class CraftSim.WORK_ORDER_TRACKER : CraftSim.Module
-CraftSim.WORK_ORDER_TRACKER = GUTIL:CreateRegistreeForEvents({
-    "NEW_RECIPE_LEARNED",
-    "CRAFTINGORDERS_CLAIMED_ORDER_UPDATED",
-    "CRAFTINGORDERS_CLAIMED_ORDER_REMOVED",
-    "CRAFTINGORDERS_FULFILL_ORDER_RESPONSE",
-})
+local workOrderTrackerEvents = { "NEW_RECIPE_LEARNED" }
+if CraftSim.CONST.WORK_ORDERS_ENABLED then
+    tinsert(workOrderTrackerEvents, "CRAFTINGORDERS_CLAIMED_ORDER_UPDATED")
+    tinsert(workOrderTrackerEvents, "CRAFTINGORDERS_CLAIMED_ORDER_REMOVED")
+    tinsert(workOrderTrackerEvents, "CRAFTINGORDERS_FULFILL_ORDER_RESPONSE")
+end
+CraftSim.WORK_ORDER_TRACKER = GUTIL:CreateRegistreeForEvents(CraftSim.UTIL:FilterKnownEvents(workOrderTrackerEvents))
 
-CraftSim.MODULES:RegisterModule("MODULE_WORK_ORDER_TRACKER", CraftSim.WORK_ORDER_TRACKER, {
-    label = L("CONTROL_PANEL_MODULES_WORK_ORDER_TRACKER_LABEL"),
-    tooltip = L("CONTROL_PANEL_MODULES_WORK_ORDER_TRACKER_TOOLTIP"),
-    sortOrder = 12,
-})
+if CraftSim.CONST.WORK_ORDERS_ENABLED then
+    CraftSim.MODULES:RegisterModule("MODULE_WORK_ORDER_TRACKER", CraftSim.WORK_ORDER_TRACKER, {
+        label = L("CONTROL_PANEL_MODULES_WORK_ORDER_TRACKER_LABEL"),
+        tooltip = L("CONTROL_PANEL_MODULES_WORK_ORDER_TRACKER_TOOLTIP"),
+        sortOrder = 12,
+    })
 
-GUTIL:RegisterCustomEvents(CraftSim.WORK_ORDER_TRACKER, {
-    "CRAFTSIM_CRAFTING_ORDERS_PRELOADED",
-    "CRAFTSIM_CRAFTQUEUE_QUEUE_PROCESS_FINISHED",
-})
+    GUTIL:RegisterCustomEvents(CraftSim.WORK_ORDER_TRACKER, {
+        "CRAFTSIM_CRAFTING_ORDERS_PRELOADED",
+        "CRAFTSIM_CRAFTQUEUE_QUEUE_PROCESS_FINISHED",
+    })
+end
 
 local Logger = CraftSim.DEBUG:RegisterLogger("WorkOrderTracker")
 
@@ -150,11 +153,7 @@ function CraftSim.WORK_ORDER_TRACKER:TryOpenPatronOrder(orderID, profession)
         return false
     end
 
-    if not ProfessionsFrame.OrdersPage:IsVisible() then
-        ProfessionsFrame:GetTabButton(3):Click()
-    end
-    ProfessionsFrame.OrdersPage:ViewOrder(orderForView)
-    return true
+    return CraftSim.PROFESSIONS_UI:ViewOrder(orderForView)
 end
 
 ---@param orderSnapshot CraftSim.PatronWorkOrderSnapshot

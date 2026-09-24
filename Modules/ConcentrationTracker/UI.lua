@@ -367,10 +367,14 @@ function CraftSim.CONCENTRATION_TRACKER.UI:Init()
     local sizeY = 40
     local offsetX = 0
     local offsetY = 0
+    local concentrationDisplay = CraftSim.PROFESSIONS_UI:GetConcentrationDisplay()
+    if not concentrationDisplay then
+        return
+    end
     ---@class CraftSim.CONCENTRATION_TRACKER.FRAME : GGUI.Frame
     CraftSim.CONCENTRATION_TRACKER.frame = GGUI.Frame({
-        parent = ProfessionsFrame.CraftingPage.ConcentrationDisplay,
-        anchorParent = ProfessionsFrame.CraftingPage.ConcentrationDisplay,
+        parent = concentrationDisplay,
+        anchorParent = concentrationDisplay,
         anchorA = "CENTER",
         anchorB = "CENTER",
         sizeX = sizeX,
@@ -1011,5 +1015,8 @@ function CraftSim.CONCENTRATION_TRACKER.UI:Update()
 end
 
 function CraftSim.CONCENTRATION_TRACKER.UI:RestoreFrameConfig()
+    if not CraftSim.CONCENTRATION_TRACKER.trackerFrame or not CraftSim.CONCENTRATION_TRACKER.frame then
+        return
+    end
     CraftSim.CONCENTRATION_TRACKER.trackerFrame:RestoreSavedConfig(CraftSim.CONCENTRATION_TRACKER.frame.frame)
 end

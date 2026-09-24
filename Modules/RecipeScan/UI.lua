@@ -45,14 +45,19 @@ local function BuildRecipeTooltipText(recipeData, recipeLists)
 end
 
 function CraftSim.RECIPE_SCAN.UI:Init()
+    local schematicForm = CraftSim.PROFESSIONS_UI:GetSchematicForm()
+    if not schematicForm then
+        return
+    end
+
     local onCloseCallback, onMinimizeCallback, onMaximizeCallback =
         CraftSim.MODULES:GetModuleFrameStateCallbacks(self.module)
 
     local frameLevel = CraftSim.UTIL:NextFrameLevel()
     ---@class CraftSim.RECIPE_SCAN.FRAME : GGUI.Frame
     CraftSim.RECIPE_SCAN.frame = GGUI.Frame({
-        parent = ProfessionsFrame.CraftingPage.SchematicForm,
-        anchorParent = ProfessionsFrame.CraftingPage.SchematicForm,
+        parent = schematicForm,
+        anchorParent = schematicForm,
         sizeX = 1050,
         sizeY = 400,
         frameID = CraftSim.CONST.FRAMES.RECIPE_SCAN,
@@ -1547,5 +1552,8 @@ function CraftSim.RECIPE_SCAN.UI:AddRecipe(row, recipeData)
 end
 
 function CraftSim.RECIPE_SCAN.UI:RestoreFrameConfig()
+    if not CraftSim.RECIPE_SCAN.frame then
+        return
+    end
     CraftSim.RECIPE_SCAN.frame:RestoreSavedConfig(ProfessionsFrame)
 end

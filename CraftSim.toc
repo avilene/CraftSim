@@ -1,4 +1,4 @@
-## Interface: 120005, 120007, 120100
+## Interface: 120005, 120007, 120100, 16001
 ## DefaultState: enabled
 
 ## Title: CraftSim
@@ -24,8 +24,7 @@
 ## AddonCompartmentFunc: CraftSim_OnAddonCompartmentClick
 ## IconTexture: Interface\Icons\inv_misc_coin_02
 ## SavedVariables: CraftSimDB
-## Dependencies: Blizzard_Professions
-## OptionalDeps: Auctionator, TradeSkillMaster, RECrystallize, OribosExchange, Syndicator
+## OptionalDeps: Blizzard_Professions, Auctionator, TradeSkillMaster, RECrystallize, OribosExchange, Syndicator
 
 embeds.xml
 
@@ -50,6 +49,7 @@ Util/Const.lua
 Debug/Debug.lua
 Debug/UI.lua
 
+Util/ProfessionsUI.lua
 Util/Util.lua
 Util/RecipeAcquisition.lua
 

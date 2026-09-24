@@ -14,7 +14,7 @@ local f = GUTIL:GetFormatter()
 local L = CraftSim.LOCAL:GetLocalizer()
 
 ---@class CraftSim.INIT : Frame
-CraftSim.INIT = GUTIL:CreateRegistreeForEvents {
+local initEvents = {
 	"ADDON_LOADED",
 	"PLAYER_LOGIN",
 	"PLAYER_ENTERING_WORLD",
@@ -22,8 +22,11 @@ CraftSim.INIT = GUTIL:CreateRegistreeForEvents {
 	"TRADE_SKILL_DATA_SOURCE_CHANGED",
 	"TRADE_SKILL_SHOW",
 	"CRAFTING_DETAILS_UPDATE",
-	"CRAFTINGORDERS_CAN_REQUEST",
 }
+if CraftSim.CONST.WORK_ORDERS_ENABLED then
+	tinsert(initEvents, "CRAFTINGORDERS_CAN_REQUEST")
+end
+CraftSim.INIT = GUTIL:CreateRegistreeForEvents(CraftSim.UTIL:FilterKnownEvents(initEvents))
 
 GUTIL:RegisterCustomEvents(CraftSim.INIT, {
 	"CRAFTSIM_OPEN_RECIPE_INFO_UPDATED",
@@ -161,20 +164,8 @@ function CraftSim.INIT:TRADE_SKILL_DATA_SOURCE_CHANGED()
 	Logger:LogInfo("TRADE_SKILL_DATA_SOURCE_CHANGED: TradeSkillReady - {tradeSkillReady}",
 		C_TradeSkillUI.IsTradeSkillReady())
 
-	local selectedTabID = ProfessionsFrame.TabSystem.selectedTabID
-
-	local selectedTab
-	if selectedTabID == 1 then
-		selectedTab = CraftSim.CONST.PROFESSIONS_TAB.RECIPE
-	elseif selectedTabID == 2 then
-		selectedTab = CraftSim.CONST.PROFESSIONS_TAB.SPEC_INFO
-	elseif selectedTabID == 3 then
-		selectedTab = CraftSim.CONST.PROFESSIONS_TAB.CRAFTING_ORDERS
-	else
-		-- if its the first time opening after login/reload its nil
-		-- but also we can safely assume here its the recipe tab because its the default to open to
-		selectedTab = CraftSim.CONST.PROFESSIONS_TAB.RECIPE
-	end
+	local selectedTab = CraftSim.PROFESSIONS_UI:GetSelectedProfessionTab()
+		or CraftSim.CONST.PROFESSIONS_TAB.RECIPE
 
 	GUTIL:TriggerCustomEvent("CRAFTSIM_PROFESSION_OPENED", professionInfo, selectedTab, CraftSim.INIT.initialLogin,
 		CraftSim.INIT.isReloadingUI)
@@ -318,43 +309,40 @@ function CraftSim.INIT:HookToEvents()
 		GUTIL:TriggerCustomEvent("CRAFTSIM_OPEN_RECIPE_INFO_UPDATED", recipeInfo)
 	end
 
-	local hookFrame = ProfessionsFrame.CraftingPage.SchematicForm
-	local hookFrame2 = ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm
-	hooksecurefunc(hookFrame, "Init", OpenRecipeInfoUpdated)
-	hooksecurefunc(hookFrame2, "Init", OpenRecipeInfoUpdated)
+	if not ProfessionsFrame then
+		Logger:LogDebug("HookToEvents skipped: no ProfessionsFrame")
+		return
+	end
 
-	-- events that update the current recipe's reagents should only update the modules' uis but not trigger a full recheck of the visible recipe
-	hookFrame:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.AllocationsModified, OpenRecipeAllocationUpdated)
-	hookFrame:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.UseBestQualityModified,
-		OpenRecipeAllocationUpdated)
+	local hookFrame = ProfessionsFrame.CraftingPage and ProfessionsFrame.CraftingPage.SchematicForm
+	if hookFrame then
+		hooksecurefunc(hookFrame, "Init", OpenRecipeInfoUpdated)
+		if ProfessionsRecipeSchematicFormMixin and ProfessionsRecipeSchematicFormMixin.Event then
+			hookFrame:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.AllocationsModified, OpenRecipeAllocationUpdated)
+			hookFrame:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.UseBestQualityModified,
+				OpenRecipeAllocationUpdated)
+		end
+	end
 
-	hookFrame2:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.AllocationsModified,
-		OpenRecipeAllocationUpdated)
-	hookFrame2:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.UseBestQualityModified,
-		OpenRecipeAllocationUpdated)
+	if CraftSim.CONST.WORK_ORDERS_ENABLED and ProfessionsFrame.OrdersPage
+		and ProfessionsFrame.OrdersPage.OrderView and ProfessionsFrame.OrdersPage.OrderView.OrderDetails then
+		local hookFrame2 = ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm
+		if hookFrame2 then
+			hooksecurefunc(hookFrame2, "Init", OpenRecipeInfoUpdated)
+			if ProfessionsRecipeSchematicFormMixin and ProfessionsRecipeSchematicFormMixin.Event then
+				hookFrame2:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.AllocationsModified,
+					OpenRecipeAllocationUpdated)
+				hookFrame2:RegisterCallback(ProfessionsRecipeSchematicFormMixin.Event.UseBestQualityModified,
+					OpenRecipeAllocationUpdated)
+			end
+		end
+	end
 
 	CraftSim.RECIPE_ACQUISITION:Init()
 
-	local recipeTab = ProfessionsFrame.TabSystem.tabs[1]
-	local specTab = ProfessionsFrame.TabSystem.tabs[2]
-	local craftingOrderTab = ProfessionsFrame.TabSystem.tabs[3]
-
-	local function tabClicked(tab)
+	CraftSim.PROFESSIONS_UI:HookContextChanges(function(tab)
 		GUTIL:TriggerCustomEvent("CRAFTSIM_PROFESSION_TAB_CLICKED", tab)
-	end
-
-	recipeTab:HookScript("OnClick",
-		function()
-			tabClicked(CraftSim.CONST.PROFESSIONS_TAB.RECIPE)
-		end)
-	specTab:HookScript("OnClick",
-		function()
-			tabClicked(CraftSim.CONST.PROFESSIONS_TAB.SPEC_INFO)
-		end)
-	craftingOrderTab:HookScript("OnClick",
-		function()
-			tabClicked(CraftSim.CONST.PROFESSIONS_TAB.CRAFTING_ORDERS)
-		end)
+	end)
 end
 
 function CraftSim.INIT:InitStaticPopups()
@@ -373,6 +361,9 @@ function CraftSim.INIT:InitStaticPopups()
 end
 
 function CraftSim.INIT:InitCraftRecipeHooks()
+	if not C_TradeSkillUI then
+		return
+	end
 	---@param onCraftData CraftSim.OnCraftData
 	local function OnCraft(onCraftData)
 		if C_TradeSkillUI.IsNPCCrafting() or C_TradeSkillUI.IsRuneforging() then
@@ -398,14 +389,21 @@ function CraftSim.INIT:InitCraftRecipeHooks()
 		GUTIL:TriggerCustomEvent("CRAFTSIM_CRAFT_RECIPE_DATA_PREPARED", recipeData)
 	end
 
+	if type(C_TradeSkillUI.CraftRecipe) ~= "function" then
+		return
+	end
 	hooksecurefunc(C_TradeSkillUI, "CraftRecipe",
 		function(recipeID, amount, craftingReagentInfoTbl, recipeLevel, orderID, concentrating)
+			local orderData = nil
+			if orderID and CraftSim.CONST.WORK_ORDERS_ENABLED then
+				orderData = C_CraftingOrders.GetClaimedOrder()
+			end
 			OnCraft(CraftSim.OnCraftData {
 				recipeID = recipeID,
 				amount = amount or 1,
 				craftingReagentInfoTbl = craftingReagentInfoTbl or {},
 				recipeLevel = recipeLevel,
-				orderData = orderID and C_CraftingOrders.GetClaimedOrder(),
+				orderData = orderData,
 				concentrating = concentrating,
 				callerData = {
 					api = "CraftRecipe",
@@ -413,6 +411,7 @@ function CraftSim.INIT:InitCraftRecipeHooks()
 				}
 			})
 		end)
+	if type(C_TradeSkillUI.CraftEnchant) == "function" then
 	hooksecurefunc(C_TradeSkillUI, "CraftEnchant",
 		function(recipeID, amount, craftingReagentInfoTbl, enchantItemLocation, concentrating)
 			OnCraft(CraftSim.OnCraftData {
@@ -428,6 +427,8 @@ function CraftSim.INIT:InitCraftRecipeHooks()
 				}
 			})
 		end)
+	end
+	if type(C_TradeSkillUI.RecraftRecipe) == "function" then
 	hooksecurefunc(C_TradeSkillUI, "RecraftRecipe",
 		function(itemGUID, craftingReagentTbl, removedModifications, applyConcentration)
 			OnCraft(CraftSim.OnCraftData {
@@ -443,23 +444,27 @@ function CraftSim.INIT:InitCraftRecipeHooks()
 				}
 			})
 		end)
-	hooksecurefunc(C_TradeSkillUI, "RecraftRecipeForOrder",
-		function(orderID, itemGUID, craftingReagentTbl, removedModifications, applyConcentration)
-			local orderData = C_CraftingOrders.GetClaimedOrder()
-			OnCraft(CraftSim.OnCraftData {
-				recipeID = orderData.spellID,
-				amount = 1,
-				isRecraft = true,
-				itemGUID = itemGUID,
-				orderData = orderData,
-				craftingReagentInfoTbl = craftingReagentTbl or {},
-				concentrating = applyConcentration,
-				callerData = {
-					api = "RecraftRecipeForOrder",
-					params = { orderID, itemGUID, craftingReagentTbl, removedModifications, applyConcentration },
-				}
-			})
-		end)
+	end
+	if CraftSim.CONST.WORK_ORDERS_ENABLED and C_TradeSkillUI.RecraftRecipeForOrder then
+		hooksecurefunc(C_TradeSkillUI, "RecraftRecipeForOrder",
+			function(orderID, itemGUID, craftingReagentTbl, removedModifications, applyConcentration)
+				local orderData = C_CraftingOrders.GetClaimedOrder()
+				OnCraft(CraftSim.OnCraftData {
+					recipeID = orderData.spellID,
+					amount = 1,
+					isRecraft = true,
+					itemGUID = itemGUID,
+					orderData = orderData,
+					craftingReagentInfoTbl = craftingReagentTbl or {},
+					concentrating = applyConcentration,
+					callerData = {
+						api = "RecraftRecipeForOrder",
+						params = { orderID, itemGUID, craftingReagentTbl, removedModifications, applyConcentration },
+					}
+				})
+			end)
+	end
+	if type(C_TradeSkillUI.CraftSalvage) == "function" then
 	hooksecurefunc(C_TradeSkillUI, "CraftSalvage",
 		---@param recipeID RecipeID
 		---@param amount number?
@@ -479,10 +484,14 @@ function CraftSim.INIT:InitCraftRecipeHooks()
 				}
 			})
 		end)
+	end
 end
 
 function CraftSim.INIT:ADDON_LOADED(addon_name)
 	if addon_name == CraftSimAddonName then
+		if C_AddOns and C_AddOns.LoadAddOn then
+			pcall(C_AddOns.LoadAddOn, "Blizzard_Professions")
+		end
 		CraftSim.DEBUG:Init()
 		CraftSim.DB:Init()
 		CraftSim.INIT:InitializeMinimapButton()
@@ -512,7 +521,9 @@ function CraftSim.INIT:ADDON_LOADED(addon_name)
 
 		CraftSim.ITEM_TOOLTIPS:HookItemTooltips()
 
-		CraftSim.CONTROL_PANEL.UI:Init()
+		if ProfessionsFrame then
+			CraftSim.CONTROL_PANEL.UI:Init()
+		end
 		CraftSim.INIT:InitStaticPopups()
 
 		CraftSim.OPTIONS:Init()
@@ -533,6 +544,10 @@ function CraftSim.INIT:HookToProfessionsFrame()
 	if professionFrameHooked then
 		return
 	end
+	if not ProfessionsFrame then
+		Logger:LogDebug("HookToProfessionsFrame skipped: no ProfessionsFrame")
+		return
+	end
 	professionFrameHooked = true
 
 	ProfessionsFrame:HookScript("OnShow",
@@ -543,12 +558,16 @@ function CraftSim.INIT:HookToProfessionsFrame()
 			CraftSim.INIT.lastRecipeID = nil
 			if CraftSim.DB.OPTIONS:Get("OPEN_LAST_RECIPE") then
 				C_Timer.After(1, function()
-					local professionInfo = ProfessionsFrame:GetProfessionInfo()
-					local profession = professionInfo.parentProfessionName
-					if CraftSim.OPTIONS.lastOpenRecipeID[profession] then
-						C_TradeSkillUI.OpenRecipe(CraftSim.OPTIONS.lastOpenRecipeID[profession])
+					local professionInfo = CraftSim.PROFESSIONS_UI:GetProfessionInfo()
+					local profession = professionInfo and professionInfo.parentProfessionName
+					if profession and CraftSim.OPTIONS.lastOpenRecipeID[profession] then
+						CraftSim.PROFESSIONS_UI:OpenRecipe(CraftSim.OPTIONS.lastOpenRecipeID[profession])
 					end
 				end)
+			end
+
+			if not CraftSim.CONST.WORK_ORDERS_ENABLED then
+				return
 			end
 
 			-- Force-load crafting orders on the first ProfessionFrame open after login.
@@ -560,7 +579,7 @@ function CraftSim.INIT:HookToProfessionsFrame()
 				if professionID and (not craftingOrdersPreloadedThisSession[professionID]
 						and C_CraftingOrders.ShouldShowCraftingOrderTab()
 						and ProfessionsFrame.isCraftingOrdersTabEnabled) then
-					if ProfessionsFrame:IsVisible() and ProfessionsFrame.CraftingPage:IsVisible() then
+					if CraftSim.PROFESSIONS_UI:IsVisible() and CraftSim.PROFESSIONS_UI:IsCraftingPageVisible() then
 						craftingOrdersPreloadedThisSession[professionID] = true
 						craftingOrdersPreloadPendingProfessionID = professionID
 						craftingOrdersCanRequest = false
@@ -572,8 +591,8 @@ function CraftSim.INIT:HookToProfessionsFrame()
 								emitCraftingOrdersPreloaded()
 							end
 						end)
-						ProfessionsFrame:GetTabButton(3):Click() -- 3 is Crafting Orders Tab; triggers OrdersPage:OnShow() → order load
-						ProfessionsFrame:GetTabButton(1):Click() -- 1 is Crafting Tab; switch back
+						CraftSim.PROFESSIONS_UI:ShowOrdersPage() -- triggers OrdersPage:OnShow() → order load
+						CraftSim.PROFESSIONS_UI:ShowCraftingPage()
 						tryEmitCraftingOrdersPreloaded()
 					end
 				end
@@ -594,26 +613,38 @@ function CraftSim.INIT:HookToProfessionsFrame()
 		cancelCraftingOrdersPreloadFallback()
 	end)
 
-	if ProfessionsFrame.OrdersPage then
-		ProfessionsFrame.OrdersPage:HookScript("OnShow", refreshAddWorkOrdersButtonDeferred)
-		ProfessionsFrame.OrdersPage.OrderView:HookScript("OnHide", function()
-			GUTIL:TriggerCustomEvent("CRAFTSIM_ORDER_VIEW_CLOSED")
-		end)
+	if CraftSim.CONST.WORK_ORDERS_ENABLED then
+		local ordersPage = CraftSim.PROFESSIONS_UI:GetOrdersPage()
+		if ordersPage then
+			ordersPage:HookScript("OnShow", refreshAddWorkOrdersButtonDeferred)
+			local orderView = CraftSim.PROFESSIONS_UI:GetOrdersView()
+			if orderView then
+				orderView:HookScript("OnHide", function()
+					GUTIL:TriggerCustomEvent("CRAFTSIM_ORDER_VIEW_CLOSED")
+				end)
+			end
+		end
 	end
-	local craftingOrdersTab = ProfessionsFrame.TabSystem and ProfessionsFrame.TabSystem.tabs[3]
-	if craftingOrdersTab then
-		craftingOrdersTab:HookScript("OnClick", refreshAddWorkOrdersButtonDeferred)
+	if CraftSim.CONST.WORK_ORDERS_ENABLED then
+		local craftingOrdersTab = ProfessionsFrame.TabSystem and ProfessionsFrame.TabSystem.tabs[3]
+		if craftingOrdersTab then
+			craftingOrdersTab:HookScript("OnClick", refreshAddWorkOrdersButtonDeferred)
+		end
 	end
 
-	ProfessionsFrame.CraftingPage:HookScript("OnHide",
-		function()
-			local professionInfo = ProfessionsFrame:GetProfessionInfo()
-			local profession = professionInfo.parentProfessionName
-			local recipeInfo = ProfessionsFrame.CraftingPage.SchematicForm:GetRecipeInfo()
-			if profession and recipeInfo then
-				CraftSim.OPTIONS.lastOpenRecipeID[profession] = recipeInfo.recipeID
-			end
-		end)
+	local craftingPage = CraftSim.PROFESSIONS_UI:GetCraftingPage()
+	if craftingPage then
+		craftingPage:HookScript("OnHide",
+			function()
+				local professionInfo = CraftSim.PROFESSIONS_UI:GetProfessionInfo()
+				local profession = professionInfo and professionInfo.parentProfessionName
+				local schematicForm = CraftSim.PROFESSIONS_UI:GetSchematicForm()
+				local recipeInfo = schematicForm and schematicForm.GetRecipeInfo and schematicForm:GetRecipeInfo()
+				if profession and recipeInfo then
+					CraftSim.OPTIONS.lastOpenRecipeID[profession] = recipeInfo.recipeID
+				end
+			end)
+	end
 end
 
 function CraftSim.INIT:HookToProfessionUnlearnedFunction()
@@ -637,6 +668,9 @@ function CraftSim.INIT:HookToConcentrationButtons()
 	if concentrationButtonHooked then
 		return
 	end
+	if not ProfessionsFrame then
+		return
+	end
 	concentrationButtonHooked = true
 
 	local function OnConcentrationToggle()
@@ -653,12 +687,29 @@ function CraftSim.INIT:HookToConcentrationButtons()
 		GUTIL:TriggerCustomEvent("CRAFTSIM_RECIPE_DATA_UPDATED", CraftSim.MODULES.recipeData)
 	end
 
-	ProfessionsFrame.CraftingPage.SchematicForm.Details.CraftingChoicesContainer.ConcentrateContainer
-		.ConcentrateToggleButton:HookScript("OnClick", OnConcentrationToggle)
+	local craftingToggle = ProfessionsFrame.CraftingPage
+		and ProfessionsFrame.CraftingPage.SchematicForm
+		and ProfessionsFrame.CraftingPage.SchematicForm.Details
+		and ProfessionsFrame.CraftingPage.SchematicForm.Details.CraftingChoicesContainer
+		and ProfessionsFrame.CraftingPage.SchematicForm.Details.CraftingChoicesContainer.ConcentrateContainer
+		and ProfessionsFrame.CraftingPage.SchematicForm.Details.CraftingChoicesContainer.ConcentrateContainer.ConcentrateToggleButton
+	if craftingToggle then
+		craftingToggle:HookScript("OnClick", OnConcentrationToggle)
+	end
 
-	ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm.Details.CraftingChoicesContainer
-		.ConcentrateContainer
-		.ConcentrateToggleButton:HookScript("OnClick", OnConcentrationToggle)
+	if CraftSim.CONST.WORK_ORDERS_ENABLED then
+		local orderToggle = ProfessionsFrame.OrdersPage
+			and ProfessionsFrame.OrdersPage.OrderView
+			and ProfessionsFrame.OrdersPage.OrderView.OrderDetails
+			and ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm
+			and ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm.Details
+			and ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm.Details.CraftingChoicesContainer
+			and ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm.Details.CraftingChoicesContainer.ConcentrateContainer
+			and ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm.Details.CraftingChoicesContainer.ConcentrateContainer.ConcentrateToggleButton
+		if orderToggle then
+			orderToggle:HookScript("OnClick", OnConcentrationToggle)
+		end
+	end
 end
 
 function CraftSim.INIT:PLAYER_LOGIN()
@@ -720,7 +771,7 @@ function CraftSim.INIT:CRAFTSIM_ORDER_VIEW_CLOSED()
 end
 
 function CraftSim.INIT:UpdateRecipeData()
-	if not ProfessionsFrame:IsVisible() then
+	if not CraftSim.PROFESSIONS_UI:IsVisible() then
 		return
 	end
 
@@ -731,9 +782,15 @@ function CraftSim.INIT:UpdateRecipeData()
 	local selectedTab = CraftSim.UTIL:GetSelectedProfessionTab()
 	if not selectedTab or selectedTab == CraftSim.CONST.PROFESSIONS_TAB.SPEC_INFO then return end
 	if selectedTab == CraftSim.CONST.PROFESSIONS_TAB.CRAFTING_ORDERS then
-		if not ProfessionsFrame.OrdersPage.OrderView:IsVisible() then
+		if not CraftSim.CONST.WORK_ORDERS_ENABLED then
 			return
 		end
+		if not CraftSim.PROFESSIONS_UI:IsOrdersViewVisible() then
+			return
+		end
+	end
+	if selectedTab == CraftSim.CONST.PROFESSIONS_TAB.BOOK then
+		return
 	end
 
 	local recipeData = CraftSim.MODULES:GetRecipeDataFromVisibleRecipe()

@@ -96,7 +96,11 @@ function CraftSim.MODULES:Init()
 		end
 		if module.UI then
 			module.UI.module = module
-			module.UI:Init()
+			if ProfessionsFrame then
+				module.UI:Init()
+			else
+				Logger:LogDebug("Skipping Module UI Init (no ProfessionsFrame): {module}", moduleID)
+			end
 
 			-- restore ggui frame config
 			if module.UI.RestoreFrameConfig then
@@ -193,9 +197,10 @@ function CraftSim.MODULES:GetRecipeDataFromVisibleRecipe()
 	local isRecraft = currentTransaction:GetRecraftAllocation() ~= nil
 	local isWorkOrder = CraftSim.UTIL:IsWorkOrder()
 
+	local orderView = isWorkOrder and CraftSim.PROFESSIONS_UI:GetOrdersView()
 	local recipeData = CraftSim.RecipeData({
 		recipeID = recipeInfo.recipeID,
-		orderData = isWorkOrder and ProfessionsFrame.OrdersPage.OrderView.order,
+		orderData = orderView and orderView.order,
 		isRecraft = isRecraft,
 	})
 

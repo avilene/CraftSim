@@ -182,6 +182,10 @@ function CraftSim.SLASH:CMD_quickbuy()
     CraftSim.SHOPPING:AuctionatorQuickBuy()
 end
 
+function CraftSim.SLASH:CMD_dumpui()
+    CraftSim.UTIL:ShowTextCopyBox(CraftSim.PROFESSIONS_UI:DumpShell())
+end
+
 function CraftSim.SLASH:CMD_collectmail()
     if MailFrame:IsVisible() then
         OpenAllMail:StartOpening()
@@ -206,6 +210,8 @@ function CraftSim.SLASH:CMD_help()
     CraftSim.DEBUG:SystemPrint(c ..
         f.bb("debug") .. " - Open the debug window")
     CraftSim.DEBUG:SystemPrint(c ..
+        f.bb("dumpui") .. " - Copy the current professions-frame UI dump")
+    CraftSim.DEBUG:SystemPrint(c ..
         f.bb("export recipeids") ..
         " - Export all recipeIDs of the current expansion in a CSV format in a copy box")
     CraftSim.DEBUG:SystemPrint(c ..
@@ -213,7 +219,7 @@ function CraftSim.SLASH:CMD_help()
     CraftSim.DEBUG:SystemPrint(c ..
         f.r("resetdb") .. " - Reset the addon's database and reload the UI")
     CraftSim.DEBUG:SystemPrint(c ..
-        f.g("quickbuy") .. " - spam to quickly buy contents of the craftsim shopping list")
+        f.g("quickbuy") .. " - click/spam to quickly buy contents of the CraftSim Auctionator shopping list")
     CraftSim.DEBUG:SystemPrint(c ..
         f.bb("disenchant") .. " - Open the disenchanting helper")
     CraftSim.DEBUG:SystemPrint(c ..

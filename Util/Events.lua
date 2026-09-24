@@ -29,7 +29,7 @@
 --- Fired after CraftSim.MODULES relays CRAFTSIM_RECIPE_DATA_MODIFIED and has prepared the updated RecipeData for listeners.
 --- args: recipeData CraftSim.RecipeData?
 ---| "CRAFTSIM_RECIPE_DATA_UPDATED"
---- Fired when the player clicks one of the profession frame tabs (Recipe, Spec, Crafting Orders).
+--- Fired when the player changes profession-frame context (retail Recipe/Spec/Orders tabs, or Forever Book/Crafting pages).
 --- args: tab CraftSim.PROFESSIONS_TAB
 ---| "CRAFTSIM_PROFESSION_TAB_CLICKED"
 --- Fired immediately after CraftRecipe / SalvageRecipe is called and CraftSim has built the RecipeData for the craft in progress.

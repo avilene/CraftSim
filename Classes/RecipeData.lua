@@ -184,9 +184,10 @@ function CraftSim.RecipeData:new(options)
     -- Delay setting order data until after reagent slots exist (reagentData is created later),
     -- so we can apply optional/finishing reagents from the order immediately.
     local pendingOrderData = orderData
-    if isWorkOrder then
+    if isWorkOrder and CraftSim.CONST.WORK_ORDERS_ENABLED then
         ---@type CraftingOrderInfo
-        pendingOrderData = ProfessionsFrame.OrdersPage.OrderView.order
+        local orderView = ProfessionsFrame and ProfessionsFrame.OrdersPage and ProfessionsFrame.OrdersPage.OrderView
+        pendingOrderData = (orderView and orderView.order) or pendingOrderData
         Logger:LogDebug("Craft Order Data:")
     end
 

@@ -12,6 +12,41 @@ CraftSim.UTIL.frameLevel = 100
 
 local Logger = CraftSim.DEBUG:RegisterLogger("Util")
 
+---@return boolean
+function CraftSim.UTIL:WorkOrdersEnabled()
+    return CraftSim.CONST.WORK_ORDERS_ENABLED == true
+end
+
+---@return Frame?
+function CraftSim.UTIL:GetWorkOrderDetails()
+    if not CraftSim.UTIL:WorkOrdersEnabled() then
+        return nil
+    end
+    local orderView = ProfessionsFrame and ProfessionsFrame.OrdersPage and ProfessionsFrame.OrdersPage.OrderView
+    return orderView and orderView.OrderDetails or nil
+end
+
+---@return Frame?
+function CraftSim.UTIL:GetWorkOrderSchematicForm()
+    local orderDetails = CraftSim.UTIL:GetWorkOrderDetails()
+    return orderDetails and orderDetails.SchematicForm or nil
+end
+
+--- Returns only events the current client knows. RegisterEvent throws on unknown names.
+---@param events string[]
+---@return string[]
+function CraftSim.UTIL:FilterKnownEvents(events)
+    local probe = CreateFrame("Frame")
+    local known = {}
+    for _, event in ipairs(events) do
+        if type(event) == "string" and pcall(probe.RegisterEvent, probe, event) then
+            table.insert(known, event)
+        end
+    end
+    probe:UnregisterAllEvents()
+    return known
+end
+
 function CraftSim.UTIL:NextFrameLevel()
     local frameLevel = CraftSim.UTIL.frameLevel
     CraftSim.UTIL.frameLevel = CraftSim.UTIL.frameLevel + 50
@@ -61,6 +96,9 @@ end
 --- and enabled by Blizzard while the Professions frame is open (with a profession we can resolve for API calls).
 ---@return boolean
 function CraftSim.UTIL:ShouldEnableCraftQueueAddWorkOrdersButton()
+    if not CraftSim.UTIL:WorkOrdersEnabled() then
+        return false
+    end
     if CraftSim.UTIL:IsNearProfessionsFrameCraftingTable() then
         return true
     end
@@ -172,8 +210,10 @@ end
 
 ---@return CraftSim.EXPORT_MODE
 function CraftSim.UTIL:GetExportModeByVisibility()
-    return (ProfessionsFrame.OrdersPage.OrderView.OrderDetails:IsVisible() and CraftSim.CONST.EXPORT_MODE.WORK_ORDER) or
-        CraftSim.CONST.EXPORT_MODE.NON_WORK_ORDER
+    if CraftSim.UTIL:IsWorkOrder() then
+        return CraftSim.CONST.EXPORT_MODE.WORK_ORDER
+    end
+    return CraftSim.CONST.EXPORT_MODE.NON_WORK_ORDER
 end
 
 --- used for e.g. phial of bountiful seasons
@@ -197,7 +237,14 @@ function CraftSim.UTIL:GetCurrentSeason()
 end
 
 function CraftSim.UTIL:IsWorkOrder()
-    return ProfessionsFrame.OrdersPage.OrderView.OrderDetails:IsVisible()
+    if not CraftSim.UTIL:WorkOrdersEnabled() then
+        return false
+    end
+    if not ProfessionsFrame or not ProfessionsFrame.OrdersPage or not ProfessionsFrame.OrdersPage.OrderView then
+        return false
+    end
+    local orderDetails = ProfessionsFrame.OrdersPage.OrderView.OrderDetails
+    return orderDetails and orderDetails:IsVisible() or false
 end
 
 ---@param skillLineID number
@@ -432,10 +479,13 @@ function CraftSim.UTIL:GetCrafterProfessionUID(crafterUID, profession)
 end
 
 function CraftSim.UTIL:GetSchematicFormByContext()
-    if ProfessionsFrame.CraftingPage.SchematicForm:IsVisible() then
-        return ProfessionsFrame.CraftingPage.SchematicForm
-    elseif ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm:IsVisible() then
-        return ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm
+    local craftingForm = CraftSim.PROFESSIONS_UI:GetSchematicForm()
+    if craftingForm and craftingForm:IsVisible() then
+        return craftingForm
+    end
+    local workOrderForm = CraftSim.UTIL:GetWorkOrderSchematicForm()
+    if workOrderForm and workOrderForm:IsVisible() then
+        return workOrderForm
     end
 end
 
@@ -1027,24 +1077,5 @@ end
 
 ---@return CraftSim.PROFESSIONS_TAB? selectedTab
 function CraftSim.UTIL:GetSelectedProfessionTab()
-    if not ProfessionsFrame:IsVisible() then
-        return nil
-    end
-
-    local selectedTabID = ProfessionsFrame.TabSystem.selectedTabID
-
-    local selectedTab
-    if selectedTabID == 1 then
-        selectedTab = CraftSim.CONST.PROFESSIONS_TAB.RECIPE
-    elseif selectedTabID == 2 then
-        selectedTab = CraftSim.CONST.PROFESSIONS_TAB.SPEC_INFO
-    elseif selectedTabID == 3 then
-        selectedTab = CraftSim.CONST.PROFESSIONS_TAB.CRAFTING_ORDERS
-    else
-        -- if its the first time opening after login/reload its nil
-        -- but also we can safely assume here its the recipe tab because its the default to open to
-        selectedTab = CraftSim.CONST.PROFESSIONS_TAB.RECIPE
-    end
-
-    return selectedTab
+    return CraftSim.PROFESSIONS_UI:GetSelectedProfessionTab()
 end

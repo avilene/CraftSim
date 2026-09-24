@@ -13,13 +13,16 @@ local L = CraftSim.LOCAL:GetLocalizer()
 local Logger = CraftSim.DEBUG:RegisterLogger("Shopping")
 
 ---@class CraftSim.SHOPPING : CraftSim.Module
-CraftSim.SHOPPING = CraftSim.SHOPPING or GUTIL:CreateRegistreeForEvents({
+local shoppingEvents = {
+    "BAG_UPDATE_DELAYED",
+    "BANKFRAME_OPENED",
+    "AUCTION_HOUSE_SHOW",
+    "AUCTION_HOUSE_CLOSED",
     "COMMODITY_PURCHASE_SUCCEEDED",
     "COMMODITY_PURCHASE_FAILED",
     "AUCTION_HOUSE_THROTTLED_SYSTEM_READY",
-    "BAG_UPDATE_DELAYED",
-    "BANKFRAME_OPENED",
-})
+}
+CraftSim.SHOPPING = CraftSim.SHOPPING or GUTIL:CreateRegistreeForEvents(CraftSim.UTIL:FilterKnownEvents(shoppingEvents))
 
 GUTIL:RegisterCustomEvents(CraftSim.SHOPPING, {
     "CRAFTSIM_CRAFTQUEUE_QUEUE_PROCESS_FINISHED",
@@ -573,36 +576,147 @@ end
 
 local LibAHTab
 
-function CraftSim.SHOPPING:AuctionatorQuickBuy()
-    Logger:LogDebug("AuctionatorQuickBuy")
+---@return Frame?
+function CraftSim.SHOPPING:GetAuctionHouseFrame()
+    return AuctionHouseFrame or AuctionFrame
+end
+
+---@return boolean
+function CraftSim.SHOPPING:IsLegacyAuctionator()
+    return Auctionator ~= nil
+        and Auctionator.Constants ~= nil
+        and Auctionator.Constants.IsLegacyAH == true
+end
+
+function CraftSim.SHOPPING:OpenAuctionatorShoppingTab()
+    if AuctionatorShoppingFrame and AuctionatorShoppingFrame:IsVisible() then
+        return true
+    end
+
+    local classicTab = _G["AuctionatorTabs_Shopping"]
+    if classicTab and classicTab.Click then
+        classicTab:Click()
+        return AuctionatorShoppingFrame and AuctionatorShoppingFrame:IsVisible()
+    end
+
+    if LibStub then
+        LibAHTab = LibAHTab or LibStub("LibAHTab-1-0", true)
+        if LibAHTab and LibAHTab.DoesIDExist and LibAHTab:DoesIDExist("AuctionatorTabs_Shopping") then
+            LibAHTab:SetSelected("AuctionatorTabs_Shopping")
+            return AuctionatorShoppingFrame and AuctionatorShoppingFrame:IsVisible()
+        end
+    end
+
+    return false
+end
+
+function CraftSim.SHOPPING:GetCraftSimAuctionatorShoppingList()
+    local listManager = Auctionator and Auctionator.Shopping and Auctionator.Shopping.ListManager
+    if not listManager then
+        return nil
+    end
+
+    local listName = CraftSim.CONST.AUCTIONATOR_SHOPPING_LIST_QUEUE_NAME
+    local listIndex = listManager:GetIndexForName(listName)
+    if not listIndex then
+        listIndex = listManager:GetIndexForName(listName .. " " .. (CraftSim.UTIL:GetPlayerCrafterUID() or ""))
+    end
+    if not listIndex then
+        return nil
+    end
+    return listManager:GetByIndex(listIndex)
+end
+
+--- One click = one step through Auctionator's classic buy UI (same rule as Lucky's Grab-bag).
+function CraftSim.SHOPPING:AuctionatorQuickBuyLegacy()
+    if not self:OpenAuctionatorShoppingTab() then
+        CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") .. f.r("Open the Auctionator Shopping tab to quick-buy"))
+        return
+    end
+
+    local buyFrame = (Auctionator.State and Auctionator.State.BuyFrameRef) or _G["AuctionatorBuyFrame"]
+    local currentPrices = buyFrame and buyFrame.CurrentPrices
+    local buyDialog = currentPrices and currentPrices.BuyDialog
+
+    if buyDialog and buyDialog:IsShown() then
+        local warningDialog = buyDialog.WarningDialog
+        if warningDialog and warningDialog:IsShown() and warningDialog.BuyStack and warningDialog.BuyStack:IsEnabled() then
+            warningDialog.BuyStack:Click()
+            return
+        end
+        if buyDialog.BuyStack and buyDialog.BuyStack:IsEnabled() then
+            buyDialog.BuyStack:Click()
+            return
+        end
+    end
+
+    if currentPrices and currentPrices:IsVisible() then
+        if currentPrices.BuyButton and currentPrices.BuyButton:IsEnabled() then
+            currentPrices.BuyButton:Click()
+            return
+        end
+
+        local provider = currentPrices.SearchDataProvider
+        if provider and provider.GetCount and provider.SetSelectedIndex then
+            for i = 1, provider:GetCount() do
+                local entry = provider:GetEntryAt(i)
+                if entry and entry.stackPrice and (entry.numStacks or 0) > 0 and not entry.isOwned then
+                    provider:SetSelectedIndex(i)
+                    return
+                end
+            end
+        end
+    end
+
+    local resultsList = AuctionatorShoppingFrame.ResultsListing
+    if resultsList and resultsList.dataProvider and resultsList.dataProvider:GetCount() > 0 then
+        local rowData = resultsList.dataProvider:GetEntryAt(1)
+        if rowData and Auctionator.EventBus and Auctionator.Buying and Auctionator.Buying.Events then
+            Auctionator.EventBus:RegisterSource(self, "CraftSimShopping")
+            Auctionator.EventBus:Fire(self, Auctionator.Buying.Events.ShowForShopping, rowData)
+            if Auctionator.Shopping and Auctionator.Shopping.Tab and Auctionator.Shopping.Tab.Events then
+                Auctionator.EventBus:Fire(self, Auctionator.Shopping.Tab.Events.BuyScreenShown)
+            end
+            Auctionator.EventBus:UnregisterSource(self)
+            return
+        end
+    end
+
+    local list = self:GetCraftSimAuctionatorShoppingList()
+    if not list then
+        CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") .. f.r("No CraftSim Auctionator shopping list. Create one from the Craft Queue first."))
+        return
+    end
+
+    local items = list:GetAllItems()
+    if not items or #items == 0 then
+        CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") .. f.g("Quick Buy: shopping list is empty"))
+        return
+    end
+
+    local listsContainer = AuctionatorShoppingFrame.ListsContainer
+    if listsContainer and listsContainer.IsListExpanded and not listsContainer:IsListExpanded(list) then
+        listsContainer:ExpandList(list)
+    end
+    AuctionatorShoppingFrame:DoSearch(items)
+end
+
+function CraftSim.SHOPPING:AuctionatorQuickBuyModern()
+    Logger:LogDebug("AuctionatorQuickBuyModern")
 
     local qbCache = self.quickBuyCache
-
-    -- AuctionHouseFrame only exists after Blizzard_AuctionHouseUI has loaded.
-    if not AuctionHouseFrame or not AuctionHouseFrame:IsVisible() then
-        return
-    end
-
-    if not AuctionatorShoppingFrame then
-        return
-    end
-
-    if not AuctionatorShoppingFrame:IsVisible() then
-        LibAHTab = LibAHTab or LibStub("LibAHTab-1-0")
-        if LibAHTab:DoesIDExist("AuctionatorTabs_Shopping") then
-            LibAHTab:SetSelected("AuctionatorTabs_Shopping")
-        end
-        return
-    end
 
     if not AuctionatorShoppingFrame then
         CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") .. f.r("Quick Buy only available for Auctionator Shopping Lists"))
         return
     end
 
-    local listManager = Auctionator.Shopping.ListManager
-    local listName = "CraftSim CraftQueue"
+    if not AuctionatorShoppingFrame:IsVisible() then
+        self:OpenAuctionatorShoppingTab()
+        return
+    end
 
+    local list = self:GetCraftSimAuctionatorShoppingList()
     local listsContainer = AuctionatorShoppingFrame.ListsContainer
     local resultsList = AuctionatorShoppingFrame.ResultsListing
 
@@ -637,7 +751,10 @@ function CraftSim.SHOPPING:AuctionatorQuickBuy()
         end
         for _, searchString in ipairs(itemSearchStrings) do
             local row = GUTIL:Find(rows, function(row)
-                local itemID = row.itemKey.itemID
+                local itemID = row.itemKey and row.itemKey.itemID
+                if not itemID then
+                    return false
+                end
                 local resultSearchString = getResultSearchString(itemID)
                 return resultSearchString and GUTIL:StringStartsWith(searchString, resultSearchString)
             end)
@@ -654,18 +771,14 @@ function CraftSim.SHOPPING:AuctionatorQuickBuy()
         end)
     end
 
-    local listIndex = listManager:GetIndexForName(listName)
-
-    if not listIndex then
+    if not list then
         set(QB_STATUS.INIT)
+        CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") .. f.r("No CraftSim Auctionator shopping list. Create one from the Craft Queue first."))
         return
     end
 
-    local list = listManager:GetByIndex(listIndex)
     local allItemSearchStrings = list:GetAllItems()
-    local numItems = allItemSearchStrings
-
-    if numItems == 0 then
+    if not allItemSearchStrings or #allItemSearchStrings == 0 then
         set(QB_STATUS.INIT)
         Logger:LogDebug("- No Items Left")
         return
@@ -685,7 +798,7 @@ function CraftSim.SHOPPING:AuctionatorQuickBuy()
 
     if status(QB_STATUS.INIT) then
         set(QB_STATUS.SEARCH_READY)
-        if not listsContainer:IsListExpanded(list) then
+        if listsContainer and not listsContainer:IsListExpanded(list) then
             listsContainer:ExpandList(list)
         end
     end
@@ -713,8 +826,11 @@ function CraftSim.SHOPPING:AuctionatorQuickBuy()
             return
         end
 
-        local itemID = resultRow.itemKey.itemID
+        local itemID = resultRow.itemKey and resultRow.itemKey.itemID
         local quantity = resultRow.purchaseQuantity
+        if not itemID or not quantity then
+            return
+        end
 
         local buyoutPrice = CraftSim.PRICE_SOURCE:GetMinBuyoutByItemID(itemID, true, true)
         local totalPrice = buyoutPrice * quantity
@@ -745,9 +861,31 @@ function CraftSim.SHOPPING:AuctionatorQuickBuy()
     end
 end
 
+function CraftSim.SHOPPING:AuctionatorQuickBuy()
+    Logger:LogDebug("AuctionatorQuickBuy")
+
+    if not self:IsAuctionatorAvailable() then
+        CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") .. f.r("Auctionator is required for Quick Buy"))
+        return
+    end
+
+    local ahFrame = self:GetAuctionHouseFrame()
+    if not ahFrame or not ahFrame:IsVisible() then
+        CraftSim.DEBUG:SystemPrint(f.l("CraftSim: ") .. f.r(L("CRAFTQUEUE_AUCTIONATOR_QUICK_BUY_AH_CLOSED")))
+        return
+    end
+
+    if self:IsLegacyAuctionator() then
+        self:AuctionatorQuickBuyLegacy()
+        return
+    end
+
+    self:AuctionatorQuickBuyModern()
+end
+
 function CraftSim.SHOPPING:AUCTION_HOUSE_THROTTLED_SYSTEM_READY()
     local qbCache = self.quickBuyCache
-    if qbCache.pendingItemCount and qbCache.pendingItemID then
+    if qbCache.pendingItemCount and qbCache.pendingItemID and C_AuctionHouse and C_AuctionHouse.ConfirmCommoditiesPurchase then
         C_AuctionHouse.ConfirmCommoditiesPurchase(qbCache.pendingItemID, qbCache.pendingItemCount)
     end
 end
@@ -767,6 +905,63 @@ function CraftSim.SHOPPING:ResetQuickBuyCache()
     wipe(qbCache.resultRows)
 end
 
+function CraftSim.SHOPPING:InitQuickBuyAuctionHouseButton()
+    local ahFrame = self:GetAuctionHouseFrame()
+    if not ahFrame then
+        if self.quickBuyAHButton then
+            self.quickBuyAHButton:Hide()
+        end
+        return
+    end
+
+    if not self:IsAuctionatorAvailable() then
+        if self.quickBuyAHButton then
+            self.quickBuyAHButton:Hide()
+        end
+        return
+    end
+
+    if not self.quickBuyAHButton then
+        self.quickBuyAHButton = GGUI.Button({
+            parent = ahFrame,
+            anchorParent = ahFrame,
+            anchorA = "TOPRIGHT",
+            anchorB = "TOPRIGHT",
+            offsetX = -24,
+            offsetY = -12,
+            adjustWidth = true,
+            sizeX = 15,
+            label = L("CRAFTQUEUE_AUCTIONATOR_QUICK_BUY_BUTTON_LABEL"),
+            tooltipOptions = {
+                anchor = "ANCHOR_CURSOR_RIGHT",
+                text = L("CRAFTQUEUE_AUCTIONATOR_QUICK_BUY_TOOLTIP"),
+            },
+            clickCallback = function()
+                CraftSim.SHOPPING:AuctionatorQuickBuy()
+            end,
+        })
+        self.quickBuyAHButton.frame:SetFrameStrata("HIGH")
+        self.quickBuyAHButton.frame:SetToplevel(true)
+    else
+        self.quickBuyAHButton.frame:ClearAllPoints()
+        self.quickBuyAHButton.frame:SetParent(ahFrame)
+        self.quickBuyAHButton.frame:SetPoint("TOPRIGHT", ahFrame, "TOPRIGHT", -24, -12)
+    end
+
+    self.quickBuyAHButton:Show()
+end
+
+function CraftSim.SHOPPING:AUCTION_HOUSE_SHOW()
+    self:InitQuickBuyAuctionHouseButton()
+end
+
+function CraftSim.SHOPPING:AUCTION_HOUSE_CLOSED()
+    self:ResetQuickBuyCache()
+    if self.quickBuyAHButton then
+        self.quickBuyAHButton:Hide()
+    end
+end
+
 local hooksInitialized = false
 
 function CraftSim.SHOPPING:Init()
@@ -775,16 +970,16 @@ function CraftSim.SHOPPING:Init()
     end
     hooksInitialized = true
 
-    hooksecurefunc(C_AuctionHouse, "ConfirmCommoditiesPurchase", function(itemID, quantity)
-        CraftSim.SHOPPING:OnConfirmCommoditiesPurchase(itemID, quantity)
-    end)
+    if C_AuctionHouse and C_AuctionHouse.ConfirmCommoditiesPurchase then
+        hooksecurefunc(C_AuctionHouse, "ConfirmCommoditiesPurchase", function(itemID, quantity)
+            CraftSim.SHOPPING:OnConfirmCommoditiesPurchase(itemID, quantity)
+        end)
+    end
+
+    self:InitQuickBuyAuctionHouseButton()
 end
 
 function CraftSim.SHOPPING:CRAFTSIM_CRAFTQUEUE_QUEUE_PROCESS_FINISHED()
-    if not CraftSim.DB.OPTIONS:Get("CRAFTQUEUE_AUTO_SHOPPING_LIST") then
-        return
-    end
-
     CraftSim.SHOPPING:CreateShoppingListFromCraftQueue()
 end
 

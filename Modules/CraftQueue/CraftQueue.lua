@@ -9,11 +9,19 @@ local f = GUTIL:GetFormatter()
 
 
 ---@class CraftSim.CRAFTQ : CraftSim.Module
-CraftSim.CRAFTQ = GUTIL:CreateRegistreeForEvents({ "TRADE_SKILL_ITEM_CRAFTED_RESULT",
-    "NEW_RECIPE_LEARNED", "CRAFTINGORDERS_CLAIMED_ORDER_UPDATED",
-    "CRAFTINGORDERS_CLAIMED_ORDER_REMOVED", "CRAFTINGORDERS_FULFILL_ORDER_RESPONSE",
-    "BAG_UPDATE_DELAYED", "UNIT_SPELLCAST_SUCCEEDED",
-    "CRAFTINGORDERS_CAN_REQUEST" })
+local craftQEvents = {
+    "TRADE_SKILL_ITEM_CRAFTED_RESULT",
+    "NEW_RECIPE_LEARNED",
+    "BAG_UPDATE_DELAYED",
+    "UNIT_SPELLCAST_SUCCEEDED",
+}
+if CraftSim.CONST.WORK_ORDERS_ENABLED then
+    tinsert(craftQEvents, "CRAFTINGORDERS_CLAIMED_ORDER_UPDATED")
+    tinsert(craftQEvents, "CRAFTINGORDERS_CLAIMED_ORDER_REMOVED")
+    tinsert(craftQEvents, "CRAFTINGORDERS_FULFILL_ORDER_RESPONSE")
+    tinsert(craftQEvents, "CRAFTINGORDERS_CAN_REQUEST")
+end
+CraftSim.CRAFTQ = GUTIL:CreateRegistreeForEvents(CraftSim.UTIL:FilterKnownEvents(craftQEvents))
 
 GUTIL:RegisterCustomEvents(CraftSim.CRAFTQ, {
     "CRAFTSIM_SETTINGS_UPDATED",
@@ -177,6 +185,10 @@ end
 
 --- Keep pending-submit guard aligned with Blizzard's currently claimed order state.
 function CraftSim.CRAFTQ:SyncPendingWorkOrderSubmitState()
+    if not CraftSim.CONST.WORK_ORDERS_ENABLED then
+        wipe(self.pendingWorkOrderSubmit)
+        return
+    end
     local claimedOrder = C_CraftingOrders.GetClaimedOrder()
     if not claimedOrder then
         wipe(self.pendingWorkOrderSubmit)
@@ -842,6 +854,9 @@ function CraftSim.CRAFTQ:GetProfitWithOwnedMaterials(recipeData, craftAmount, op
 end
 
 function CraftSim.CRAFTQ:QueueWorkOrders()
+    if not CraftSim.CONST.WORK_ORDERS_ENABLED then
+        return
+    end
     CraftSim.CRAFTQ.queuingWorkOrders = true
     Logger:LogDebug("QueueWorkOrders", false, true)
     self.craftQueue = self.craftQueue or CraftSim.CraftQueue()
@@ -1720,6 +1735,10 @@ function CraftSim.CRAFTQ:QueueOpenRecipe()
     else
         queueButton = CraftSim.CRAFTQ.queueRecipeButtonWO
     end
+    if not queueButton then
+        CraftSim.CRAFTQ:AddRecipe({ recipeData = recipeData })
+        return
+    end
 
     local KEYS = CraftSim.WIDGETS.OptimizationOptions.OPTION_KEYS
     local optimizeTopProfit = CraftSim.DB.OPTIMIZATION_OPTIONS:Get(
@@ -1881,6 +1900,9 @@ function CraftSim.CRAFTQ:NEW_RECIPE_LEARNED(recipeID)
 end
 
 function CraftSim.CRAFTQ:CRAFTSIM_CRAFTING_ORDERS_PRELOADED()
+    if not CraftSim.CONST.WORK_ORDERS_ENABLED then
+        return
+    end
     if not CraftSim.DB.OPTIONS:Get("CRAFTQUEUE_WORK_ORDERS_AUTO_QUEUE") then
         return
     end

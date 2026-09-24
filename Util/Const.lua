@@ -14,6 +14,32 @@ CraftSim.CONST.CURRENT_BETA_BUILD = "11.0.2"
 CraftSim.CONST.FEATURE_TOGGLES = {
 }
 
+--- Client flavor. Classic Forever beta is 1.60.x (interface 16001, product wow_classic_beta).
+do
+    local version, build, _, tocversion = GetBuildInfo()
+    local projectID = WOW_PROJECT_ID
+    local isRetail = projectID == WOW_PROJECT_MAINLINE
+    local toc = tonumber(tocversion) or 0
+    local isForever = (toc >= 16000 and toc < 20000)
+        or (type(version) == "string" and version:find("^1%.6") ~= nil)
+
+    ---@class CraftSim.CONST.GAME
+    CraftSim.CONST.GAME = {
+        version = version,
+        build = build,
+        tocversion = toc,
+        projectID = projectID,
+        isRetail = isRetail,
+        isForever = isForever,
+    }
+
+    -- Work orders (C_CraftingOrders / ProfessionsFrame.OrdersPage) are a retail DF+ system.
+    CraftSim.CONST.WORK_ORDERS_ENABLED = isRetail
+        and not isForever
+        and C_CraftingOrders ~= nil
+        and type(C_CraftingOrders.ShouldShowCraftingOrderTab) == "function"
+end
+
 ---@type table<CraftSim.EXPANSION_IDS, table<string, number>>
 CraftSim.CONST.PERCENT_DIVISION_FACTORS = {
     [9] = { -- Dragonflight
@@ -79,6 +105,7 @@ CraftSim.CONST.PROFESSIONS_TAB = {
     RECIPE = "RECIPE",
     SPEC_INFO = "SPEC_INFO",
     CRAFTING_ORDERS = "CRAFTING_ORDERS",
+    BOOK = "BOOK", -- Forever profession book (no recipe selected)
 }
 
 CraftSim.CONST.MODULES_FRAME_STRATA = "HIGH"

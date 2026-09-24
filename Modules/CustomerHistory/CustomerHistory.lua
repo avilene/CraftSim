@@ -7,18 +7,22 @@ local L = CraftSim.LOCAL:GetLocalizer()
 ---@class CraftSim.CUSTOMER_HISTORY : CraftSim.Module
 ---@field UI CraftSim.CUSTOMER_HISTORY.UI
 ---@field frame CraftSim.CUSTOMER_HISTORY.FRAME
-CraftSim.CUSTOMER_HISTORY = GUTIL:CreateRegistreeForEvents(
-    {
+local customerHistoryEvents = {}
+if CraftSim.CONST.WORK_ORDERS_ENABLED then
+    customerHistoryEvents = {
         "CRAFTINGORDERS_FULFILL_ORDER_RESPONSE",
         "CRAFTINGORDERS_CLAIMED_ORDER_UPDATED",
         "CRAFTINGORDERS_CLAIMED_ORDER_REMOVED",
     }
-)
+end
+CraftSim.CUSTOMER_HISTORY = GUTIL:CreateRegistreeForEvents(CraftSim.UTIL:FilterKnownEvents(customerHistoryEvents))
 
-CraftSim.MODULES:RegisterModule("MODULE_CUSTOMER_HISTORY", CraftSim.CUSTOMER_HISTORY, {
-    label = L("CONTROL_PANEL_MODULES_CUSTOMER_HISTORY_LABEL"),
-    tooltip = L("CONTROL_PANEL_MODULES_CUSTOMER_HISTORY_TOOLTIP"),
-})
+if CraftSim.CONST.WORK_ORDERS_ENABLED then
+    CraftSim.MODULES:RegisterModule("MODULE_CUSTOMER_HISTORY", CraftSim.CUSTOMER_HISTORY, {
+        label = L("CONTROL_PANEL_MODULES_CUSTOMER_HISTORY_LABEL"),
+        tooltip = L("CONTROL_PANEL_MODULES_CUSTOMER_HISTORY_TOOLTIP"),
+    })
+end
 
 GUTIL:RegisterCustomEvents(CraftSim.CUSTOMER_HISTORY, {
     "CRAFTSIM_PROFESSION_INITIALIZED",
@@ -49,6 +53,9 @@ function CraftSim.CUSTOMER_HISTORY:CRAFTSIM_MODULE_OPENED(moduleID)
 end
 
 function CraftSim.CUSTOMER_HISTORY:CacheClaimedOrder()
+    if not CraftSim.CONST.WORK_ORDERS_ENABLED then
+        return
+    end
     local claimedOrder = C_CraftingOrders.GetClaimedOrder()
     if claimedOrder then
         -- Deep copy to avoid taint / cleared-by-Blizzard references after fulfill.

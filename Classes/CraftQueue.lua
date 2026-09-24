@@ -179,7 +179,7 @@ function CraftSim.CraftQueue:Remove(craftQueueItem, removeParentSubcraftInformat
         end
     end
 
-    if craftQueueItem.recipeData:IsWorkOrder() then
+    if CraftSim.CONST.WORK_ORDERS_ENABLED and craftQueueItem.recipeData:IsWorkOrder() then
         -- check if claimed if yes release
         local claimedOrder = C_CraftingOrders.GetClaimedOrder()
         if claimedOrder and claimedOrder.orderID == craftQueueItem.recipeData.orderData.orderID then
@@ -195,6 +195,9 @@ end
 ---@param skillLineID? number only prune orders for this expansion skill line (API list is skill-line scoped)
 ---@return number removedCount
 function CraftSim.CraftQueue:RemoveStaleWorkOrders(validOrderIDs, profession, fetchedOrderTypes, skillLineID)
+    if not CraftSim.CONST.WORK_ORDERS_ENABLED then
+        return 0
+    end
     -- Without a skill line we cannot tell which expansion the Blizzard list covers;
     -- skip pruning so other expansions' queued orders are not wiped.
     if not skillLineID or skillLineID == 0 then
@@ -338,7 +341,7 @@ function CraftSim.CraftQueue:RestoreFromDB()
 end
 
 function CraftSim.CraftQueue:FilterSortByPriority()
-    local claimedOrder = C_CraftingOrders.GetClaimedOrder()
+    local claimedOrder = CraftSim.CONST.WORK_ORDERS_ENABLED and C_CraftingOrders.GetClaimedOrder() or nil
     -- first append all recipes of the current crafter character that do not have any subrecipes
     local characterRecipesNoAltDependency, restRecipes = GUTIL:Split(self.craftQueueItems, function(cqi)
         local noActiveSubRecipes = not cqi.hasActiveSubRecipes

@@ -860,6 +860,10 @@ function CraftSim.LOCAL_EN:GetData()
         CRAFT_QUEUE_SHATTER_MOTE_AUTOMATIC_OWNED = "Automatic (cheapest owned)",
         CRAFT_QUEUE_SHATTER_RIGHT_CLICK_HINT = "\nRight-click to choose mote.",
         CRAFTQUEUE_AUCTIONATOR_SHOPPING_LIST_BUTTON_LABEL = "Create Auctionator Shopping List",
+        CRAFTQUEUE_AUCTIONATOR_QUICK_BUY_BUTTON_LABEL = "Quick Buy",
+        CRAFTQUEUE_AUCTIONATOR_QUICK_BUY_TOOLTIP =
+            "Each click buys the next cheapest auction from the CraftSim Auctionator shopping list. Open the auction house first.",
+        CRAFTQUEUE_AUCTIONATOR_QUICK_BUY_AH_CLOSED = "Open the auction house to quick-buy the CraftSim shopping list.",
         CRAFT_QUEUE_QUEUE_TAB_LABEL = "Craft Queue",
         CRAFT_QUEUE_FLASH_TASKBAR_OPTION_LABEL = "Flash Taskbar on " ..
             f.bb("CraftQueue") .. " craft finished",
@@ -977,7 +981,8 @@ greater or equal the configured sale rate threshold.
         CRAFT_QUEUE_TUTORIAL_QUEUE_BUTTONS_TOOLTIP =
         "These buttons can be used to automatically queue a range of recipes.\nCraftLists are predefined lists of recipes\nFirst Crafts are recipes with first craft bonuses\nWork Orders are either Patron, Guild, Personal or Public Orders that can be queued based on your selection criteria",
         CRAFT_QUEUE_TUTORIAL_SHOPPING_LIST_TOOLTIP =
-        "If you have the Auctionator addon loaded, you can use a button here to create a shopping list based on your queued recipes missing reagents.",
+        "If you have the Auctionator addon loaded, you can use a button here to create a shopping list based on your queued recipes missing reagents.\nUse " ..
+            f.g("Quick Buy") .. " at the auction house to buy that list one click at a time.",
         CRAFT_QUEUE_TUTORIAL_QUICK_ACCESS_BAR_TOOLTIP =
         "This is a quick access to your upgradeable soulbound finishing reagents (Patron Order Rewards). For Enchanting there is also a quick access button for the shatter buff recipe",
         CRAFT_QUEUE_TUTORIAL_CRAFT_QUEUE_OPTIONS_TOOLTIP =

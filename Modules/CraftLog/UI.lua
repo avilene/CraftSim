@@ -73,9 +73,15 @@ function CraftSim.CRAFT_LOG.UI:Init()
 
     local hideBlizzardCraftingLog = CraftSim.DB.OPTIONS:Get("CRAFT_LOG_HIDE_BLIZZARD_CRAFTING_LOG")
 
-    if hideBlizzardCraftingLog and ProfessionsFrame.CraftingPage.CraftingOutputLog then
+    if hideBlizzardCraftingLog and ProfessionsFrame and ProfessionsFrame.CraftingPage and ProfessionsFrame.CraftingPage.CraftingOutputLog then
         ProfessionsFrame.CraftingPage.CraftingOutputLog:UnregisterAllEvents()
-        ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog:UnregisterAllEvents()
+        local workOrderLog = CraftSim.CONST.WORK_ORDERS_ENABLED
+            and ProfessionsFrame.OrdersPage
+            and ProfessionsFrame.OrdersPage.OrderView
+            and ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog
+        if workOrderLog then
+            workOrderLog:UnregisterAllEvents()
+        end
     end
 
     self:InitLogFrame(CraftSim.CRAFT_LOG.frame)
@@ -169,22 +175,39 @@ function CraftSim.CRAFT_LOG.UI:InitLogFrame(frame)
                         newValue)
 
                     if newValue then
-                        ProfessionsFrame.CraftingPage.CraftingOutputLog:UnregisterAllEvents()
-                        ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog:UnregisterAllEvents()
-                        if ProfessionsFrame.CraftingPage.CraftingOutputLog:IsVisible() then
-                            ProfessionsFrame.CraftingPage.CraftingOutputLog:Hide()
-                        elseif ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog:IsVisible() then
-                            ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog:Hide()
+                        if ProfessionsFrame and ProfessionsFrame.CraftingPage and ProfessionsFrame.CraftingPage.CraftingOutputLog then
+                            ProfessionsFrame.CraftingPage.CraftingOutputLog:UnregisterAllEvents()
+                            if ProfessionsFrame.CraftingPage.CraftingOutputLog:IsVisible() then
+                                ProfessionsFrame.CraftingPage.CraftingOutputLog:Hide()
+                            end
+                        end
+                        local workOrderLog = CraftSim.CONST.WORK_ORDERS_ENABLED
+                            and ProfessionsFrame
+                            and ProfessionsFrame.OrdersPage
+                            and ProfessionsFrame.OrdersPage.OrderView
+                            and ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog
+                        if workOrderLog then
+                            workOrderLog:UnregisterAllEvents()
+                            if workOrderLog:IsVisible() then
+                                workOrderLog:Hide()
+                            end
                         end
                     else
-                        ProfessionsFrame.CraftingPage.CraftingOutputLog:RegisterEvent(
-                            "TRADE_SKILL_ITEM_CRAFTED_RESULT")
-                        ProfessionsFrame.CraftingPage.CraftingOutputLog:RegisterEvent(
-                            "TRADE_SKILL_CURRENCY_REWARD_RESULT")
-                        ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog:RegisterEvent(
-                            "TRADE_SKILL_ITEM_CRAFTED_RESULT")
-                        ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog:RegisterEvent(
-                            "TRADE_SKILL_CURRENCY_REWARD_RESULT")
+                        if ProfessionsFrame and ProfessionsFrame.CraftingPage and ProfessionsFrame.CraftingPage.CraftingOutputLog then
+                            ProfessionsFrame.CraftingPage.CraftingOutputLog:RegisterEvent(
+                                "TRADE_SKILL_ITEM_CRAFTED_RESULT")
+                            ProfessionsFrame.CraftingPage.CraftingOutputLog:RegisterEvent(
+                                "TRADE_SKILL_CURRENCY_REWARD_RESULT")
+                        end
+                        local workOrderLog = CraftSim.CONST.WORK_ORDERS_ENABLED
+                            and ProfessionsFrame
+                            and ProfessionsFrame.OrdersPage
+                            and ProfessionsFrame.OrdersPage.OrderView
+                            and ProfessionsFrame.OrdersPage.OrderView.CraftingOutputLog
+                        if workOrderLog then
+                            workOrderLog:RegisterEvent("TRADE_SKILL_ITEM_CRAFTED_RESULT")
+                            workOrderLog:RegisterEvent("TRADE_SKILL_CURRENCY_REWARD_RESULT")
+                        end
                     end
                 end)
 

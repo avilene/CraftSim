@@ -19,15 +19,23 @@ CraftSim.SIMULATION_MODE.frameWO = nil
 local Logger = CraftSim.DEBUG:RegisterLogger("SimulationMode.UI")
 
 function CraftSim.SIMULATION_MODE.UI:Init()
-    local x, y = ProfessionsFrame.CraftingPage.SchematicForm:GetSize()
-    local woX, woY = ProfessionsFrame.OrdersPage.OrderView.OrderDetails:GetSize()
+    local schematicForm = CraftSim.PROFESSIONS_UI:GetSchematicForm()
+    if not schematicForm then
+        return
+    end
+    local workOrderDetails = CraftSim.UTIL:GetWorkOrderDetails()
+    local x, y = schematicForm:GetSize()
+    local woX, woY = x, y
+    if workOrderDetails then
+        woX, woY = workOrderDetails:GetSize()
+    end
     local sizeOffsetX = 135
     local sizeOffsetY = 55
     local offsetY = -30
 
     CraftSim.SIMULATION_MODE.frame = GGUI.Frame({
-        parent = ProfessionsFrame.CraftingPage.SchematicForm,
-        anchorParent = ProfessionsFrame.CraftingPage.SchematicForm,
+        parent = schematicForm,
+        anchorParent = schematicForm,
         anchorA = "BOTTOMLEFT",
         anchorB = "BOTTOMLEFT",
         sizeX = x - sizeOffsetX,
@@ -35,29 +43,31 @@ function CraftSim.SIMULATION_MODE.UI:Init()
         offsetY = offsetY,
         backdropOptions = CraftSim.CONST.DEFAULT_BACKDROP_OPTIONS,
         frameStrata = CraftSim.CONST.MODULES_FRAME_STRATA,
-        frameLevel = ProfessionsFrame.CraftingPage.SchematicForm:GetFrameLevel() + 10,
+        frameLevel = schematicForm:GetFrameLevel() + 10,
         hide = true,
     })
-    CraftSim.SIMULATION_MODE.frameWO = GGUI.Frame({
-        parent = ProfessionsFrame.OrdersPage.OrderView.OrderDetails,
-        anchorParent = ProfessionsFrame.OrdersPage.OrderView.OrderDetails,
-        anchorA = "BOTTOMLEFT",
-        anchorB = "BOTTOMLEFT",
-        sizeX = woX,
-        sizeY = woY - sizeOffsetY,
-        offsetY = offsetY,
-        title = L("SIMULATION_MODE_LABEL"),
-        backdropOptions = CraftSim.CONST.DEFAULT_BACKDROP_OPTIONS,
-        frameStrata = CraftSim.CONST.MODULES_FRAME_STRATA,
-        frameLevel = ProfessionsFrame.OrdersPage.OrderView.OrderDetails:GetFrameLevel() + 10,
-        hide = true,
-    })
+    if workOrderDetails then
+        CraftSim.SIMULATION_MODE.frameWO = GGUI.Frame({
+            parent = workOrderDetails,
+            anchorParent = workOrderDetails,
+            anchorA = "BOTTOMLEFT",
+            anchorB = "BOTTOMLEFT",
+            sizeX = woX,
+            sizeY = woY - sizeOffsetY,
+            offsetY = offsetY,
+            title = L("SIMULATION_MODE_LABEL"),
+            backdropOptions = CraftSim.CONST.DEFAULT_BACKDROP_OPTIONS,
+            frameStrata = CraftSim.CONST.MODULES_FRAME_STRATA,
+            frameLevel = workOrderDetails:GetFrameLevel() + 10,
+            hide = true,
+        })
+    end
 
     local function createContent(frame, isWorkOrder)
         ---@class CraftSim.SIMULATION_MODE.FRAME : GGUI.Frame
         local frame = frame
-        local schematicForm = isWorkOrder and ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm or
-            ProfessionsFrame.CraftingPage.SchematicForm
+        local schematicForm = isWorkOrder and CraftSim.UTIL:GetWorkOrderSchematicForm() or
+            CraftSim.PROFESSIONS_UI:GetSchematicForm()
 
         -- Reagent Frames (Required + Optionals)
         do
@@ -258,7 +268,9 @@ function CraftSim.SIMULATION_MODE.UI:Init()
     end
 
     createContent(CraftSim.SIMULATION_MODE.frame)
-    createContent(CraftSim.SIMULATION_MODE.frameWO, true)
+    if CraftSim.SIMULATION_MODE.frameWO then
+        createContent(CraftSim.SIMULATION_MODE.frameWO, true)
+    end
 end
 
 function CraftSim.SIMULATION_MODE.UI:UpdateCraftingDetailsPanel()
@@ -562,8 +574,12 @@ function CraftSim.SIMULATION_MODE.UI:VisibleByContext()
 end
 
 function CraftSim.SIMULATION_MODE.UI:Update()
-    CraftSim.SIMULATION_MODE.frame:Hide()
-    CraftSim.SIMULATION_MODE.frameWO:Hide()
+    if CraftSim.SIMULATION_MODE.frame then
+        CraftSim.SIMULATION_MODE.frame:Hide()
+    end
+    if CraftSim.SIMULATION_MODE.frameWO then
+        CraftSim.SIMULATION_MODE.frameWO:Hide()
+    end
 
     if not CraftSim.SIMULATION_MODE.isActive then
         return
@@ -578,6 +594,9 @@ function CraftSim.SIMULATION_MODE.UI:Update()
 
     local frame = CraftSim.UTIL:IsWorkOrder() and CraftSim.SIMULATION_MODE.frameWO or
         CraftSim.SIMULATION_MODE.frame --[[@as CraftSim.SIMULATION_MODE.FRAME]]
+    if not frame then
+        return
+    end
     frame:Show()
 
     -- TODO: move to buff module and react to event

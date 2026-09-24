@@ -520,16 +520,11 @@ end
 ---@param pathID number?
 ---@param skillLineID number?
 local function ApplySpecNavigation(tabID, pathID, skillLineID)
-    if not ProfessionsFrame or not ProfessionsFrame:IsVisible() then
+    if not CraftSim.PROFESSIONS_UI:IsVisible() or not CraftSim.PROFESSIONS_UI:HasSpecPage() then
         return
     end
 
-    local specTabID = ProfessionsFrame.specializationsTabID or 2
-    if ProfessionsFrame.SetTab then
-        ProfessionsFrame:SetTab(specTabID, true)
-    else
-        ProfessionsFrame:GetTabButton(2):Click()
-    end
+    CraftSim.PROFESSIONS_UI:ShowSpecPage()
 
     local pathChain = pathID and { pathID } or {}
     if tabID and pathID then
@@ -561,7 +556,7 @@ end
 ---@param tabID number?
 ---@param pathID number?
 function CraftSim.RECIPE_ACQUISITION:NavigateToSpec(skillLineID, tabID, pathID)
-    if not skillLineID then
+    if not skillLineID or not CraftSim.PROFESSIONS_UI:HasSpecPage() then
         return
     end
 
@@ -603,11 +598,8 @@ function CraftSim.RECIPE_ACQUISITION:NavigateToRecipe(recipeID)
     local baseTradeSkillID = professionInfo and professionInfo.professionID
 
     local function openRecipe()
-        if ProfessionsFrame and ProfessionsFrame:IsVisible() then
-            if not ProfessionsFrame.CraftingPage:IsVisible() then
-                ProfessionsFrame:GetTabButton(1):Click()
-            end
-            C_TradeSkillUI.OpenRecipe(recipeID)
+        if CraftSim.PROFESSIONS_UI:IsVisible() then
+            CraftSim.PROFESSIONS_UI:OpenRecipe(recipeID)
         end
     end
 
@@ -977,12 +969,14 @@ end
 
 function CraftSim.RECIPE_ACQUISITION:InitSchematicFormButtons()
     local forms = {
-        ProfessionsFrame.CraftingPage.SchematicForm,
-        ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm,
+        CraftSim.PROFESSIONS_UI:GetSchematicForm(),
+        CraftSim.UTIL:GetWorkOrderSchematicForm(),
     }
 
     for _, schematicForm in ipairs(forms) do
-        EnsureSchematicAcquisitionButton(schematicForm)
+        if schematicForm then
+            EnsureSchematicAcquisitionButton(schematicForm)
+        end
     end
 end
 
@@ -992,6 +986,12 @@ end
 
 ---@param recipeInfo TradeSkillRecipeInfo?
 function CraftSim.RECIPE_ACQUISITION:CRAFTSIM_OPEN_RECIPE_INFO_UPDATED(recipeInfo)
-    self:UpdateSchematicFormButton(ProfessionsFrame.CraftingPage.SchematicForm, recipeInfo)
-    self:UpdateSchematicFormButton(ProfessionsFrame.OrdersPage.OrderView.OrderDetails.SchematicForm, recipeInfo)
+    local schematicForm = CraftSim.PROFESSIONS_UI:GetSchematicForm()
+    if schematicForm then
+        self:UpdateSchematicFormButton(schematicForm, recipeInfo)
+    end
+    local workOrderForm = CraftSim.UTIL:GetWorkOrderSchematicForm()
+    if workOrderForm then
+        self:UpdateSchematicFormButton(workOrderForm, recipeInfo)
+    end
 end
